@@ -1,0 +1,79 @@
+:root {
+  --w-deep-blue: #03202F;
+  --w-cyan: #3DB7E4;
+  --w-sea-green: #50DAB0;
+  --w-magenta: #E21776;
+  --w-gradient: linear-gradient(135deg, #50DAB0, #3DB7E4);
+  --w-bg: #f0f6fa;
+  --w-bg-hover: #e6eff5;
+  --w-table-header-bg: #e0f0f8;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Hiragino Sans',
+    'Hiragino Kaku Gothic ProN', 'Yu Gothic', sans-serif;
+  background: var(--w-bg);
+  color: var(--w-deep-blue);
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+a {
+  color: var(--w-cyan);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+button {
+  cursor: pointer;
+  font-family: inherit;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+th,
+td {
+  padding: 10px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+th {
+  background: var(--w-table-header-bg);
+  color: var(--w-deep-blue);
+  font-weight: 600;
+  font-size: 0.85rem;
+}
+
+td {
+  font-size: 0.9rem;
+}
+
+tr:hover {
+  background: var(--w-bg-hover);
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #e0f0f8;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--w-cyan);
+  border-radius: 3px;
+}
