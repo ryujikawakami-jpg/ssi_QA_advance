@@ -128,6 +128,7 @@ export default function CourseSelect() {
               border: '1px solid #f0f0f0',
               position: 'relative',
               overflow: 'hidden',
+              textAlign: 'left',
             }}
             onMouseEnter={e => {
               (e.currentTarget as HTMLDivElement).style.transform = 'translateY(-3px)';
