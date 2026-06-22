@@ -32,6 +32,7 @@ export default function LeaderView() {
   const [assessments, setAssessments] = useState<Assessment[]>([]);
   const [answersMap, setAnswersMap] = useState<Record<number, Answer[]>>({});
   const [deleting, setDeleting] = useState<string | null>(null);
+  const [deleteModalMember, setDeleteModalMember] = useState<{ id: string; name: string } | null>(null);
 
   const loadData = useCallback(async () => {
     if (!user) return;
@@ -254,10 +255,7 @@ export default function LeaderView() {
                       .filter(d => d && d !== '未提出');
                     const lastDate = lastDates.length > 0 ? lastDates[0] : '未提出';
 
-                    // Find any deletable assessment (most recent submitted)
-                    const deletableAssessment = courses
-                      .map(c => row.courseRates[c.id])
-                      .find(cr => cr?.assessmentId != null);
+                    const hasAnyAssessment = courses.some(c => row.courseRates[c.id]?.assessmentId != null);
 
                     return (
                       <tr key={row.id} style={styles.tr}>
@@ -309,16 +307,12 @@ export default function LeaderView() {
                         })}
                         <td style={styles.td}>{lastDate}</td>
                         <td style={styles.td}>
-                          {deletableAssessment?.assessmentId != null && (
+                          {hasAnyAssessment && (
                             <button
-                              style={{
-                                ...styles.deleteBtn,
-                                opacity: deleting === `${deletableAssessment.assessmentId}` ? 0.5 : 1,
-                              }}
-                              disabled={deleting !== null}
-                              onClick={() => handleDelete(deletableAssessment.assessmentId!, row.name)}
+                              style={styles.deleteBtn}
+                              onClick={() => setDeleteModalMember({ id: row.id, name: row.name })}
                             >
-                              {deleting === `${deletableAssessment.assessmentId}` ? '削除中...' : '提出履歴削除'}
+                              履歴管理
                             </button>
                           )}
                         </td>
@@ -330,6 +324,67 @@ export default function LeaderView() {
             </table>
           </div>
         </div>
+        {/* Delete modal */}
+        {deleteModalMember && (
+          <div style={styles.modalOverlay} onClick={() => setDeleteModalMember(null)}>
+            <div style={styles.modal} onClick={e => e.stopPropagation()}>
+              <h3 style={{ fontSize: 16, fontWeight: 700, color: DEEP_BLUE, margin: '0 0 16px' }}>
+                {deleteModalMember.name} の提出履歴
+              </h3>
+              <div style={{ maxHeight: 400, overflowY: 'auto' }}>
+                {courses.map(course => {
+                  const memberAssessments = assessments
+                    .filter(a => a.user_id === deleteModalMember.id && a.course_id === course.id && a.status === 'submitted')
+                    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+                  if (memberAssessments.length === 0) return null;
+                  return (
+                    <div key={course.id} style={{ marginBottom: 16 }}>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: CYAN, marginBottom: 8 }}>{course.name}</div>
+                      {memberAssessments.map((a, i) => (
+                        <div key={a.id} style={{
+                          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                          padding: '8px 12px', background: i === 0 ? '#f0f9ff' : '#fafafa',
+                          borderRadius: 8, marginBottom: 4, border: '1px solid #eee',
+                        }}>
+                          <div>
+                            <span style={{ fontSize: 13, color: DEEP_BLUE, fontWeight: 600 }}>
+                              {a.submitted_at ? new Date(a.submitted_at).toLocaleDateString('ja-JP', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '-'}
+                            </span>
+                            {i === 0 && <span style={{ fontSize: 10, color: CYAN, fontWeight: 700, marginLeft: 8 }}>最新</span>}
+                            {a.score_snapshot && typeof a.score_snapshot === 'object' && 'rate' in a.score_snapshot && (
+                              <span style={{ fontSize: 12, color: '#888', marginLeft: 8 }}>
+                                達成率 {String(a.score_snapshot.rate)}%
+                              </span>
+                            )}
+                          </div>
+                          <button
+                            style={{
+                              ...styles.deleteBtn,
+                              opacity: deleting === `${a.id}` ? 0.5 : 1,
+                            }}
+                            disabled={deleting !== null}
+                            onClick={() => handleDelete(a.id, deleteModalMember.name)}
+                          >
+                            {deleting === `${a.id}` ? '削除中...' : '削除'}
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })}
+              </div>
+              <button
+                onClick={() => setDeleteModalMember(null)}
+                style={{
+                  marginTop: 12, padding: '8px 24px', fontSize: 14, fontWeight: 600,
+                  color: '#666', background: '#f0f0f0', border: 'none', borderRadius: 8, cursor: 'pointer',
+                }}
+              >
+                閉じる
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -466,5 +521,25 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: 6,
     cursor: 'pointer',
     whiteSpace: 'nowrap' as const,
+  },
+  modalOverlay: {
+    position: 'fixed',
+    inset: 0,
+    background: 'rgba(0,0,0,0.4)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 1000,
+    padding: 16,
+  },
+  modal: {
+    background: '#fff',
+    borderRadius: 16,
+    padding: '28px 24px',
+    maxWidth: 520,
+    width: '100%',
+    boxShadow: '0 12px 40px rgba(0,0,0,0.15)',
+    maxHeight: '80vh',
+    overflow: 'auto',
   },
 };
