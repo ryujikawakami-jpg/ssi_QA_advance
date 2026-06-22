@@ -1,9 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { fetchProfiles, fetchCourses, fetchAssessments, fetchAnswers, fetchSkills, fetchLevels, deleteAssessment } from '../lib/data';
+import { fetchProfiles, fetchTeams, fetchCourses, fetchAssessments, fetchAnswers, fetchSkills, fetchLevels, deleteAssessment } from '../lib/data';
 import { calcRate, calcReachedLevel } from '../lib/score';
-import type { Profile, Course, Skill, Level, Assessment, Answer } from '../types';
+import type { Profile, Team, Course, Skill, Level, Assessment, Answer } from '../types';
 
 const DEEP_BLUE = '#03202F';
 const CYAN = '#3DB7E4';
@@ -19,8 +19,13 @@ export default function LeaderView() {
   const { user } = useAuth();
   const navigate = useNavigate();
 
+  const isBoard = user?.role === 'board';
+
   const [loading, setLoading] = useState(true);
+  const [teams, setTeams] = useState<Team[]>([]);
+  const [selectedTeamId, setSelectedTeamId] = useState<number | 'all'>(isBoard ? 'all' : (user?.team_id ?? 'all'));
   const [courses, setCourses] = useState<Course[]>([]);
+  const [allProfiles, setAllProfiles] = useState<Profile[]>([]);
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [skills, setSkills] = useState<Skill[]>([]);
   const [levels, setLevels] = useState<Level[]>([]);
@@ -32,25 +37,30 @@ export default function LeaderView() {
     if (!user) return;
     setLoading(true);
     try {
-      const [c, p, s, l, a] = await Promise.all([
+      const [c, t, p, s, l, a] = await Promise.all([
         fetchCourses(),
-        fetchProfiles(user.team_id ?? undefined),
+        fetchTeams(),
+        isBoard ? fetchProfiles() : fetchProfiles(user.team_id ?? undefined),
         fetchSkills(),
         fetchLevels(),
         fetchAssessments(),
       ]);
       setCourses(c);
-      // Only show members from leader's own team
-      setProfiles(p.filter(pr => pr.team_id === user.team_id && pr.role === 'member'));
+      setTeams(t);
+      setAllProfiles(p);
       setSkills(s);
       setLevels(l);
-      // Filter assessments to team members only
-      const teamMemberIds = new Set(p.filter(pr => pr.team_id === user.team_id).map(pr => pr.id));
-      const teamAssessments = a.filter(as => teamMemberIds.has(as.user_id));
-      setAssessments(teamAssessments);
+
+      // Filter by selected team
+      const filteredProfiles = filterByTeam(p, selectedTeamId, user);
+      setProfiles(filteredProfiles);
+
+      const memberIds = new Set(filteredProfiles.map(pr => pr.id));
+      const filteredAssessments = a.filter(as => memberIds.has(as.user_id));
+      setAssessments(filteredAssessments);
 
       // Load answers for all submitted assessments
-      const submittedAssessments = teamAssessments.filter(as => as.status === 'submitted');
+      const submittedAssessments = filteredAssessments.filter(as => as.status === 'submitted');
       const ansMap: Record<number, Answer[]> = {};
       await Promise.all(
         submittedAssessments.map(async (as) => {
@@ -63,7 +73,24 @@ export default function LeaderView() {
     } finally {
       setLoading(false);
     }
-  }, [user]);
+  }, [user, selectedTeamId]);
+
+  function filterByTeam(p: Profile[], teamId: number | 'all', currentUser: Profile): Profile[] {
+    const filtered = currentUser.role === 'board'
+      ? p.filter(pr => pr.role !== 'retired')
+      : p.filter(pr => pr.team_id === currentUser.team_id && pr.role === 'member');
+    if (teamId === 'all') return filtered;
+    return filtered.filter(pr => pr.team_id === teamId);
+  }
+
+  // Re-filter when team selection changes
+  useEffect(() => {
+    if (!user || allProfiles.length === 0) return;
+    const filteredProfiles = filterByTeam(allProfiles, selectedTeamId, user);
+    setProfiles(filteredProfiles);
+    const memberIds = new Set(filteredProfiles.map(pr => pr.id));
+    setAssessments(prev => prev.filter(as => memberIds.has(as.user_id)));
+  }, [selectedTeamId]);
 
   useEffect(() => {
     loadData();
@@ -141,7 +168,33 @@ export default function LeaderView() {
   return (
     <div style={styles.container}>
       <div style={styles.content}>
-        <h1 style={styles.title}>チームビュー</h1>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12, marginBottom: 20 }}>
+          <h1 style={{ ...styles.title, marginBottom: 0 }}>チームビュー</h1>
+          {isBoard && teams.length > 0 && (
+            <select
+              value={selectedTeamId}
+              onChange={(e) => {
+                const v = e.target.value;
+                setSelectedTeamId(v === 'all' ? 'all' : Number(v));
+              }}
+              style={{
+                padding: '8px 14px',
+                fontSize: 14,
+                border: '1px solid #ddd',
+                borderRadius: 8,
+                background: '#fff',
+                color: DEEP_BLUE,
+                fontWeight: 600,
+                cursor: 'pointer',
+              }}
+            >
+              <option value="all">全チーム</option>
+              {teams.map(t => (
+                <option key={t.id} value={t.id}>{t.name}</option>
+              ))}
+            </select>
+          )}
+        </div>
 
         <div style={styles.statsBar}>
           <div style={styles.stat}>
