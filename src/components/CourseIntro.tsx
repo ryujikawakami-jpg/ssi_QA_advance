@@ -147,12 +147,14 @@ const styles: Record<string, React.CSSProperties> = {
     color: SEA_GREEN,
     fontWeight: 600,
     margin: '0 0 12px',
+    textAlign: 'left' as const,
   },
   description: {
     fontSize: 14,
     color: '#666',
     lineHeight: 1.7,
     margin: '0 0 24px',
+    textAlign: 'left' as const,
   },
   stats: {
     display: 'flex',
