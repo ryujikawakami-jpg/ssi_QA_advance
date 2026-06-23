@@ -10,6 +10,7 @@ import LeaderView from './components/LeaderView';
 import BoardView from './components/BoardView';
 import AdminPanel from './components/AdminPanel';
 import CertificationPage from './components/CertificationPage';
+import CareerMapPage from './components/CareerMapPage';
 import MyPage from './components/MyPage';
 
 function AppRoutes() {
@@ -37,6 +38,7 @@ function AppRoutes() {
           <Route path="/board" element={<BoardView />} />
           <Route path="/mypage" element={<MyPage />} />
           <Route path="/certifications" element={<CertificationPage />} />
+          <Route path="/career" element={<CareerMapPage />} />
           {(user.role === 'board') && (
             <Route path="/admin/*" element={<AdminPanel />} />
           )}
