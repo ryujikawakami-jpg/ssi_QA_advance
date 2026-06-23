@@ -263,16 +263,7 @@ function buildStageCards(): Record<StageKey, TrackCard[]> {
 
 const STAGE_CARDS = buildStageCards();
 
-// ── Helper: get all cardIds for a group ──
-function _getGroupCardIds(groupId: string): string[] {
-  const ids: string[] = [];
-  const group = TRACK_GROUPS.find(g => g.id === groupId);
-  if (!group) return ids;
-  for (let i = 0; i < group.tracks.length; i++) {
-    ids.push(`${groupId}:${i}`);
-  }
-  return ids;
-}
+
 
 // ── Helper: get connecting stages for a cardId ──
 function getCardStages(cardId: string): StageKey[] {
