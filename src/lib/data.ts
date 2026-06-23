@@ -358,18 +358,20 @@ export async function sendInviteEmail(
 ): Promise<{ success: boolean }> {
   const roleLabelMap: Record<string, string> = { member: 'メンバー', leader: 'リーダー', board: '管理者' };
   try {
-    await fetch(GAS_INVITE_URL, {
-      method: 'POST',
-      mode: 'no-cors',
-      headers: { 'Content-Type': 'text/plain' },
-      body: JSON.stringify({
-        email,
-        role: roleLabelMap[role] ?? role,
-        team: teamName || '未割当',
-        appUrl,
-      }),
+    // Use GET with query params to avoid CORS issues with GAS
+    const params = new URLSearchParams({
+      email,
+      role: roleLabelMap[role] ?? role,
+      team: teamName || '未割当',
+      appUrl,
     });
-    // no-cors returns opaque response, so we assume success if no error thrown
+    // Open in hidden iframe to bypass CORS (GAS redirects on GET)
+    const iframe = document.createElement('iframe');
+    iframe.style.display = 'none';
+    iframe.src = `${GAS_INVITE_URL}?${params.toString()}`;
+    document.body.appendChild(iframe);
+    // Clean up after 10 seconds
+    setTimeout(() => iframe.remove(), 10000);
     return { success: true };
   } catch (err) {
     console.error('Failed to send invite email:', err);
