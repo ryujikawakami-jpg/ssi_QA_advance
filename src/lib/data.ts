@@ -380,3 +380,115 @@ export async function sendInviteEmail(
     return { success: false };
   }
 }
+
+// ══════════════════════════════════════
+// Certifications
+// ══════════════════════════════════════
+
+export interface CertificationRecord {
+  id: number;
+  name: string;
+  description: string;
+  level: string;
+  category: string;
+  reward: string | null;
+  sort_order: number;
+}
+
+export interface UserCertification {
+  id: number;
+  user_id: string;
+  certification_id: number;
+  status: 'interested' | 'studying' | 'acquired';
+  updated_at: string;
+}
+
+export async function fetchCertifications(): Promise<CertificationRecord[]> {
+  if (isSupabaseMode()) {
+    const sb = await getSupabase();
+    if (!sb) return [];
+    const { data, error } = await sb.from('certifications').select('*').order('sort_order');
+    if (error) throw error;
+    return data as CertificationRecord[];
+  }
+  return [];
+}
+
+export async function fetchUserCertifications(userId?: string): Promise<UserCertification[]> {
+  if (isSupabaseMode()) {
+    const sb = await getSupabase();
+    if (!sb) return [];
+    let query = sb.from('user_certifications').select('*').order('updated_at', { ascending: false });
+    if (userId) query = query.eq('user_id', userId);
+    const { data, error } = await query;
+    if (error) throw error;
+    return data as UserCertification[];
+  }
+  return [];
+}
+
+export async function upsertUserCertification(userId: string, certId: number, status: string): Promise<void> {
+  if (isSupabaseMode()) {
+    const sb = await getSupabase();
+    if (!sb) throw new Error('Supabase not available');
+    const { error } = await sb
+      .from('user_certifications')
+      .upsert(
+        { user_id: userId, certification_id: certId, status, updated_at: new Date().toISOString() },
+        { onConflict: 'user_id,certification_id' },
+      );
+    if (error) throw error;
+    return;
+  }
+  throw new Error('Certification operations require Supabase');
+}
+
+export async function removeUserCertification(userId: string, certId: number): Promise<void> {
+  if (isSupabaseMode()) {
+    const sb = await getSupabase();
+    if (!sb) return;
+    const { error } = await sb
+      .from('user_certifications')
+      .delete()
+      .eq('user_id', userId)
+      .eq('certification_id', certId);
+    if (error) throw error;
+    return;
+  }
+  throw new Error('Certification operations require Supabase');
+}
+
+// ── Admin CRUD for certifications ──
+
+export async function createCertification(cert: Omit<CertificationRecord, 'id'>): Promise<CertificationRecord> {
+  if (isSupabaseMode()) {
+    const sb = await getSupabase();
+    if (!sb) throw new Error('Supabase not available');
+    const { data, error } = await sb.from('certifications').insert(cert).select().single();
+    if (error) throw error;
+    return data as CertificationRecord;
+  }
+  throw new Error('Admin operations require Supabase');
+}
+
+export async function updateCertification(id: number, updates: Partial<CertificationRecord>): Promise<void> {
+  if (isSupabaseMode()) {
+    const sb = await getSupabase();
+    if (!sb) return;
+    const { error } = await sb.from('certifications').update(updates).eq('id', id);
+    if (error) throw error;
+    return;
+  }
+  throw new Error('Admin operations require Supabase');
+}
+
+export async function deleteCertification(id: number): Promise<void> {
+  if (isSupabaseMode()) {
+    const sb = await getSupabase();
+    if (!sb) return;
+    const { error } = await sb.from('certifications').delete().eq('id', id);
+    if (error) throw error;
+    return;
+  }
+  throw new Error('Admin operations require Supabase');
+}

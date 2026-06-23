@@ -10,6 +10,7 @@ import LeaderView from './components/LeaderView';
 import BoardView from './components/BoardView';
 import AdminPanel from './components/AdminPanel';
 import CertificationPage from './components/CertificationPage';
+import MyPage from './components/MyPage';
 
 function AppRoutes() {
   const { user } = useAuth();
@@ -34,6 +35,7 @@ function AppRoutes() {
           <Route path="/course/:course_id/dashboard/:userId" element={<Dashboard />} />
           <Route path="/team" element={<LeaderView />} />
           <Route path="/board" element={<BoardView />} />
+          <Route path="/mypage" element={<MyPage />} />
           <Route path="/certifications" element={<CertificationPage />} />
           {(user.role === 'board') && (
             <Route path="/admin/*" element={<AdminPanel />} />

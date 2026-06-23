@@ -28,6 +28,7 @@ export default function Header() {
 
   const navItems = (
     <>
+      <Link to="/mypage" style={styles.navLink}>マイページ</Link>
       <Link to="/" style={styles.navLink}>コース一覧</Link>
       <Link to="/certifications" style={styles.navLink}>資格表</Link>
       {(user.role === 'leader' || user.role === 'board') && (

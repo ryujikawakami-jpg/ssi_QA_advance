@@ -1,156 +1,25 @@
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+import { useAuth } from '../context/AuthContext';
+import {
+  fetchCertifications,
+  fetchUserCertifications,
+  upsertUserCertification,
+  removeUserCertification,
+} from '../lib/data';
+import type { CertificationRecord, UserCertification } from '../lib/data';
 
 const DEEP_BLUE = '#03202F';
 const CYAN = '#3DB7E4';
 const SEA_GREEN = '#50DAB0';
 const MAGENTA = '#E21776';
 
-// ── Certification data parsed from CSV ──
-
-interface Cert {
-  no: number;
-  name: string;
-  category: string;
-}
-
-interface LevelData {
-  name: string;
-  reward: string;
-  color: string;
-  certs: Cert[];
-}
-
-const levels: LevelData[] = [
-  {
-    name: 'Academia',
-    reward: '【どちらかマストで取得】',
-    color: '#6B7280',
-    certs: [
-      { no: 1, name: 'JSTQB Foundation Level', category: 'QA推奨' },
-      { no: 2, name: 'ISTQB Foundation Level', category: 'QA推奨' },
-    ],
-  },
-  {
-    name: 'エントリー',
-    reward: '【報奨金10,000円】',
-    color: CYAN,
-    certs: [
-      { no: 1, name: 'ITパスポート試験', category: '国家資格' },
-      { no: 2, name: '情報セキュリティマネジメント試験', category: '国家資格' },
-      { no: 3, name: 'AWS Certified Cloud Practitioner', category: 'ベンダー系' },
-      { no: 4, name: 'AWS Certified AI Practitioner', category: 'ベンダー系' },
-      { no: 5, name: 'Oracle Master Bronze', category: 'ベンダー系' },
-      { no: 6, name: 'Oracle Certified Java Programmer, Bronze SE', category: 'ベンダー系' },
-      { no: 7, name: 'Microsoft Certified: Azure Fundamentals', category: 'ベンダー系' },
-      { no: 8, name: 'Microsoft Certified: Azure Data Fundamentals', category: 'ベンダー系' },
-      { no: 9, name: 'Microsoft Certified: Security, Compliance, and Identity Fundamentals', category: 'ベンダー系' },
-      { no: 10, name: 'LPIC-1', category: 'ベンダーニュートラル系' },
-      { no: 11, name: 'LinuCレベル1', category: 'ベンダーニュートラル系' },
-      { no: 12, name: 'Pythonエンジニア認定基礎試験', category: 'ベンダーニュートラル系' },
-      { no: 13, name: 'Pythonエンジニア認定データ分析試験', category: 'ベンダーニュートラル系' },
-      { no: 14, name: 'HTML5プロフェッショナル認定試験 レベル1', category: 'ベンダーニュートラル系' },
-      { no: 15, name: 'Javaプログラミング能力認定試験 3級', category: 'ベンダーニュートラル系' },
-      { no: 16, name: 'Certified in Cybersecurity (CC)', category: 'ベンダーニュートラル系' },
-      { no: 17, name: 'Microsoft Certified: Azure AI Fundamentals', category: 'AI系' },
-      { no: 18, name: '生成AIプラクティショナー 社内認定資格', category: '社内認定資格' },
-      { no: 19, name: 'Playwright 社内認定資格', category: '社内認定資格' },
-    ],
-  },
-  {
-    name: 'アソシエイト',
-    reward: '【報奨金30,000円】',
-    color: SEA_GREEN,
-    certs: [
-      { no: 1, name: '基本情報技術者試験', category: '国家資格' },
-      { no: 2, name: 'JSTQB Advanced Level テストアナリスト', category: 'QA推奨' },
-      { no: 3, name: 'JSTQB Advanced Level テストマネージャ', category: 'QA推奨' },
-      { no: 4, name: 'ISTQB Advanced Level', category: 'QA推奨' },
-      { no: 5, name: 'AWS Certified Solutions Architect - Associate', category: 'ベンダー系' },
-      { no: 6, name: 'AWS Certified Developer - Associate', category: 'ベンダー系' },
-      { no: 7, name: 'AWS Certified SysOps Administrator - Associate', category: 'ベンダー系' },
-      { no: 8, name: 'AWS Certified Data Engineer - Associate', category: 'ベンダー系' },
-      { no: 9, name: 'AWS Certified Machine Learning Engineer - Associate', category: 'ベンダー系' },
-      { no: 10, name: 'CCNA', category: 'ベンダー系' },
-      { no: 11, name: 'Oracle Master Silver', category: 'ベンダー系' },
-      { no: 12, name: 'Oracle Master Silver SQL', category: 'ベンダー系' },
-      { no: 13, name: 'Oracle Certified Java Programmer, Silver SE 11', category: 'ベンダー系' },
-      { no: 14, name: 'Microsoft Certified: Azure Security Engineer Associate', category: 'ベンダー系' },
-      { no: 15, name: 'Microsoft Certified: Azure Network Engineer Associate', category: 'ベンダー系' },
-      { no: 16, name: 'Microsoft Certified: Azure Administrator Associate', category: 'ベンダー系' },
-      { no: 17, name: 'Microsoft Certified: Azure Developer Associate', category: 'ベンダー系' },
-      { no: 18, name: 'Microsoft Certified: Windows Server Hybrid Administrator Associate', category: 'ベンダー系' },
-      { no: 19, name: 'Microsoft Certified: Azure Database Administrator Associate', category: 'ベンダー系' },
-      { no: 20, name: 'Microsoft Certified: Azure Data Scientist Associate', category: 'ベンダー系' },
-      { no: 21, name: 'Microsoft Certified: Fabric Analytics Engineer Associate', category: 'ベンダー系' },
-      { no: 22, name: 'Microsoft Certified: Fabric Data Engineer Associate', category: 'ベンダー系' },
-      { no: 23, name: 'Microsoft Certified: Identity and Access Administrator Associate', category: 'ベンダー系' },
-      { no: 24, name: 'Microsoft Certified: Security Operations Analyst Associate', category: 'ベンダー系' },
-      { no: 25, name: 'Microsoft Certified: Information Security Administrator Associate', category: 'ベンダー系' },
-      { no: 26, name: 'LPIC-2', category: 'ベンダーニュートラル系' },
-      { no: 27, name: 'LinuCレベル2', category: 'ベンダーニュートラル系' },
-      { no: 28, name: 'Pythonエンジニア認定データ分析実践試験', category: 'ベンダーニュートラル系' },
-      { no: 29, name: 'Pythonエンジニア認定実践試験', category: 'ベンダーニュートラル系' },
-      { no: 30, name: 'HTML5プロフェッショナル認定試験 レベル2', category: 'ベンダーニュートラル系' },
-      { no: 31, name: 'Javaプログラミング能力認定試験 2級', category: 'ベンダーニュートラル系' },
-      { no: 32, name: 'OpenJS Node.js Application Developer (JSNAD)', category: 'ベンダーニュートラル系' },
-      { no: 33, name: 'Systems Security Certified Practitioner (SSCP)', category: 'ベンダーニュートラル系' },
-      { no: 34, name: 'Microsoft Certified: Azure AI Engineer Associate', category: 'AI系' },
-    ],
-  },
-  {
-    name: 'プロフェッショナル',
-    reward: '【報奨金40,000円】',
-    color: MAGENTA,
-    certs: [
-      { no: 1, name: '応用情報技術者試験', category: '国家資格' },
-      { no: 2, name: 'JSTQB Specialist テスト自動化エンジニア', category: 'QA推奨' },
-      { no: 3, name: 'AWS Certified Solutions Architect - Professional', category: 'ベンダー系' },
-      { no: 4, name: 'AWS Certified DevOps Engineer - Professional', category: 'ベンダー系' },
-      { no: 5, name: 'CCNP', category: 'ベンダー系' },
-      { no: 6, name: 'Oracle Master Gold', category: 'ベンダー系' },
-      { no: 7, name: 'Oracle Certified Java Programmer, Gold SE 11', category: 'ベンダー系' },
-      { no: 8, name: 'Microsoft Certified: Azure Solutions Architect Expert', category: 'ベンダー系' },
-      { no: 9, name: 'Microsoft Certified: DevOps Engineer Expert', category: 'ベンダー系' },
-      { no: 10, name: 'Microsoft Certified: Cybersecurity Architect Expert', category: 'ベンダー系' },
-      { no: 11, name: 'Claude Certified Architect', category: 'ベンダー系' },
-      { no: 12, name: 'LPIC-3', category: 'ベンダーニュートラル系' },
-      { no: 13, name: 'LinuCレベル3', category: 'ベンダーニュートラル系' },
-      { no: 14, name: 'Meta Front-End Developer Professional Certificate', category: 'ベンダーニュートラル系' },
-      { no: 15, name: 'Pythonとネットワークの自動化基礎検定', category: 'ベンダーニュートラル系' },
-      { no: 16, name: 'Javaプログラミング能力認定試験 1級', category: 'ベンダーニュートラル系' },
-      { no: 17, name: 'Certified Cloud Security Professional (CCSP)', category: 'ベンダーニュートラル系' },
-      { no: 18, name: 'Certified Secure Software Lifecycle Professional (CSSLP)', category: 'ベンダーニュートラル系' },
-      { no: 19, name: 'Professional Cloud Developer', category: 'AI系' },
-      { no: 20, name: 'TensorFlow Developer Certificate', category: 'AI系' },
-    ],
-  },
-  {
-    name: 'エキスパート',
-    reward: '【毎月10,000円（2つ目から5,000円）】',
-    color: '#8B5CF6',
-    certs: [
-      { no: 1, name: 'データベーススペシャリスト試験', category: '国家資格' },
-      { no: 2, name: 'ネットワークスペシャリスト試験', category: '国家資格' },
-      { no: 3, name: 'プロジェクトマネージャ試験', category: '国家資格' },
-      { no: 4, name: 'システムアーキテクト試験', category: '国家資格' },
-      { no: 5, name: 'ITストラテジスト試験', category: '国家資格' },
-      { no: 6, name: 'ITサービスマネージャ試験', category: '国家資格' },
-      { no: 7, name: 'システム監査技術者試験', category: '国家資格' },
-      { no: 8, name: '情報処理安全確保支援士試験', category: '国家資格' },
-      { no: 9, name: 'ISTQB Certified Tester Expert Level (ISTQB EL)', category: 'QA推奨' },
-      { no: 10, name: 'AWS Certified Advanced Networking - Specialty', category: 'ベンダー系' },
-      { no: 11, name: 'Microsoft Certified: Azure for SAP Workloads Specialty', category: 'ベンダー系' },
-      { no: 12, name: 'Microsoft Certified: Azure Virtual Desktop Specialty', category: 'ベンダー系' },
-      { no: 13, name: 'Microsoft Certified: Azure Cosmos DB Developer Specialty', category: 'ベンダー系' },
-      { no: 14, name: 'AWS Certified Machine Learning - Specialty', category: 'ベンダー系' },
-      { no: 15, name: 'AWS Certified Security - Specialty', category: 'ベンダー系' },
-      { no: 16, name: 'Oracle Master Platinum', category: 'ベンダー系' },
-      { no: 17, name: 'PMP® (Project Management Professional)', category: 'ベンダーニュートラル系' },
-      { no: 18, name: 'Certified Kubernetes Administrator (CKA)', category: 'ベンダーニュートラル系' },
-      { no: 19, name: 'Certified Information Systems Security Professional (CISSP)', category: 'ベンダーニュートラル系' },
-    ],
-  },
-];
+const levelColors: Record<string, string> = {
+  'Academia': '#6B7280',
+  'エントリー': CYAN,
+  'アソシエイト': SEA_GREEN,
+  'プロフェッショナル': MAGENTA,
+  'エキスパート': '#8B5CF6',
+};
 
 const categoryColors: Record<string, string> = {
   '国家資格': '#dc2626',
@@ -161,8 +30,71 @@ const categoryColors: Record<string, string> = {
   '社内認定資格': MAGENTA,
 };
 
+function statusIndicator(status: string | undefined): string {
+  if (status === 'interested') return ' \u2665';
+  if (status === 'studying') return ' \u2605';
+  if (status === 'acquired') return ' \u2713';
+  return '';
+}
+
 export default function CertificationPage() {
+  const { user } = useAuth();
+  const [certs, setCerts] = useState<CertificationRecord[]>([]);
+  const [userCerts, setUserCerts] = useState<UserCertification[]>([]);
   const [selectedLevel, setSelectedLevel] = useState<string | null>(null);
+  const [modalCert, setModalCert] = useState<CertificationRecord | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  const loadData = useCallback(async () => {
+    try {
+      const [allCerts, uc] = await Promise.all([
+        fetchCertifications(),
+        user ? fetchUserCertifications(user.id) : Promise.resolve([]),
+      ]);
+      setCerts(allCerts);
+      setUserCerts(uc);
+    } catch (e) {
+      console.error('Failed to load certifications:', e);
+    } finally {
+      setLoading(false);
+    }
+  }, [user]);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  const getUserCertStatus = (certId: number): string | undefined => {
+    return userCerts.find(uc => uc.certification_id === certId)?.status;
+  };
+
+  const handleToggleInterested = async (certId: number) => {
+    if (!user) return;
+    const current = getUserCertStatus(certId);
+    if (!current) {
+      await upsertUserCertification(user.id, certId, 'interested');
+    } else if (current === 'interested') {
+      await removeUserCertification(user.id, certId);
+    }
+    await loadData();
+  };
+
+  // Group certs by level
+  const levelNames = [...new Set(certs.map(c => c.level))];
+  const levelGroups = levelNames.map(level => ({
+    level,
+    color: levelColors[level] ?? '#666',
+    reward: certs.find(c => c.level === level)?.reward ?? '',
+    certs: certs.filter(c => c.level === level),
+  }));
+
+  if (loading) {
+    return (
+      <div style={{ minHeight: 'calc(100vh - 56px)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <span style={{ color: '#999' }}>読み込み中...</span>
+      </div>
+    );
+  }
 
   return (
     <div style={{ minHeight: 'calc(100vh - 56px)', padding: '24px 16px 60px', maxWidth: 1000, margin: '0 auto' }}>
@@ -184,31 +116,29 @@ export default function CertificationPage() {
         >
           すべて
         </button>
-        {levels.map(lv => (
+        {levelGroups.map(lv => (
           <button
-            key={lv.name}
-            onClick={() => setSelectedLevel(lv.name)}
+            key={lv.level}
+            onClick={() => setSelectedLevel(lv.level)}
             style={{
               padding: '6px 16px', fontSize: 13, fontWeight: 600, borderRadius: 999, cursor: 'pointer',
-              border: selectedLevel === lv.name ? 'none' : `1px solid ${lv.color}40`,
-              background: selectedLevel === lv.name ? lv.color : '#fff',
-              color: selectedLevel === lv.name ? '#fff' : lv.color,
+              border: selectedLevel === lv.level ? 'none' : `1px solid ${lv.color}40`,
+              background: selectedLevel === lv.level ? lv.color : '#fff',
+              color: selectedLevel === lv.level ? '#fff' : lv.color,
             }}
           >
-            {lv.name}
+            {lv.level}
           </button>
         ))}
       </div>
 
       {/* Level sections */}
-      {levels
-        .filter(lv => !selectedLevel || lv.name === selectedLevel)
+      {levelGroups
+        .filter(lv => !selectedLevel || lv.level === selectedLevel)
         .map(lv => {
-          // Group by category
           const categories = [...new Set(lv.certs.map(c => c.category))];
-
           return (
-            <div key={lv.name} style={{
+            <div key={lv.level} style={{
               background: '#fff', borderRadius: 16, padding: '24px', marginBottom: 20,
               boxShadow: '0 1px 8px rgba(0,0,0,0.04)', border: `1px solid ${lv.color}20`,
             }}>
@@ -218,7 +148,7 @@ export default function CertificationPage() {
                   fontSize: 16, fontWeight: 800, color: '#fff', background: lv.color,
                   padding: '5px 16px', borderRadius: 999,
                 }}>
-                  {lv.name}
+                  {lv.level}
                 </span>
                 <span style={{ fontSize: 13, color: lv.color, fontWeight: 700 }}>
                   {lv.reward}
@@ -244,15 +174,25 @@ export default function CertificationPage() {
                       {cat}
                     </div>
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, paddingLeft: 14 }}>
-                      {catCerts.map(cert => (
-                        <span key={cert.no} style={{
-                          fontSize: 13, color: DEEP_BLUE, background: '#f5f7fa',
-                          padding: '5px 12px', borderRadius: 8, border: '1px solid #eee',
-                          lineHeight: 1.4,
-                        }}>
-                          {cert.name}
-                        </span>
-                      ))}
+                      {catCerts.map(cert => {
+                        const status = getUserCertStatus(cert.id);
+                        const indicator = statusIndicator(status);
+                        return (
+                          <button
+                            key={cert.id}
+                            onClick={() => setModalCert(cert)}
+                            style={{
+                              fontSize: 13, color: DEEP_BLUE, background: status ? '#eef8ff' : '#f5f7fa',
+                              padding: '5px 12px', borderRadius: 8,
+                              border: status ? `1px solid ${CYAN}60` : '1px solid #eee',
+                              lineHeight: 1.4, cursor: 'pointer',
+                              fontWeight: status ? 600 : 400,
+                            }}
+                          >
+                            {cert.name}{indicator}
+                          </button>
+                        );
+                      })}
                     </div>
                   </div>
                 );
@@ -260,6 +200,126 @@ export default function CertificationPage() {
             </div>
           );
         })}
+
+      {/* Modal */}
+      {modalCert && (
+        <div
+          onClick={() => setModalCert(null)}
+          style={{
+            position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            zIndex: 1000, padding: 16,
+          }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              background: '#fff', borderRadius: 16, padding: 28, maxWidth: 480, width: '100%',
+              boxShadow: '0 8px 32px rgba(0,0,0,0.15)', maxHeight: '80vh', overflowY: 'auto',
+            }}
+          >
+            <h2 style={{ fontSize: 20, fontWeight: 800, color: DEEP_BLUE, marginBottom: 12 }}>
+              {modalCert.name}
+            </h2>
+
+            <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
+              <span style={{
+                fontSize: 12, fontWeight: 700, color: '#fff',
+                background: levelColors[modalCert.level] ?? '#666',
+                padding: '3px 10px', borderRadius: 999,
+              }}>
+                {modalCert.level}
+              </span>
+              <span style={{
+                fontSize: 12, fontWeight: 700,
+                color: categoryColors[modalCert.category] ?? '#666',
+                background: `${categoryColors[modalCert.category] ?? '#666'}18`,
+                padding: '3px 10px', borderRadius: 999,
+                border: `1px solid ${categoryColors[modalCert.category] ?? '#666'}40`,
+              }}>
+                {modalCert.category}
+              </span>
+            </div>
+
+            <p style={{ fontSize: 14, color: '#555', lineHeight: 1.7, marginBottom: 16 }}>
+              {modalCert.description || '説明はまだありません'}
+            </p>
+
+            {modalCert.reward && (
+              <div style={{
+                fontSize: 13, color: levelColors[modalCert.level] ?? '#666',
+                fontWeight: 700, marginBottom: 20,
+                padding: '8px 12px', borderRadius: 8,
+                background: `${levelColors[modalCert.level] ?? '#666'}10`,
+              }}>
+                {modalCert.reward}
+              </div>
+            )}
+
+            {/* Status / action buttons */}
+            {(() => {
+              const status = getUserCertStatus(modalCert.id);
+              if (status === 'acquired') {
+                return (
+                  <div style={{
+                    padding: '10px 16px', borderRadius: 8, background: '#ecfdf5',
+                    color: SEA_GREEN, fontWeight: 700, fontSize: 14, textAlign: 'center',
+                  }}>
+                    取得済み
+                  </div>
+                );
+              }
+              if (status === 'studying') {
+                return (
+                  <div style={{
+                    padding: '10px 16px', borderRadius: 8, background: '#eff6ff',
+                    color: CYAN, fontWeight: 700, fontSize: 14, textAlign: 'center',
+                  }}>
+                    習得を目指しています
+                  </div>
+                );
+              }
+              if (status === 'interested') {
+                return (
+                  <button
+                    onClick={() => handleToggleInterested(modalCert.id)}
+                    style={{
+                      width: '100%', padding: '10px 16px', borderRadius: 8,
+                      background: '#fff', border: `1px solid #ddd`, color: '#888',
+                      fontSize: 14, fontWeight: 600, cursor: 'pointer',
+                    }}
+                  >
+                    気になるを解除
+                  </button>
+                );
+              }
+              return (
+                <button
+                  onClick={() => handleToggleInterested(modalCert.id)}
+                  style={{
+                    width: '100%', padding: '10px 16px', borderRadius: 8,
+                    background: MAGENTA, border: 'none', color: '#fff',
+                    fontSize: 14, fontWeight: 700, cursor: 'pointer',
+                  }}
+                >
+                  気になる
+                </button>
+              );
+            })()}
+
+            <button
+              onClick={() => setModalCert(null)}
+              style={{
+                width: '100%', marginTop: 10, padding: '8px 16px', borderRadius: 8,
+                background: '#f5f5f5', border: 'none', color: '#888',
+                fontSize: 13, cursor: 'pointer',
+              }}
+            >
+              閉じる
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
