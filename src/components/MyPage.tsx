@@ -31,10 +31,10 @@ const roleLabelMap: Record<string, string> = {
 
 const levelColors: Record<string, string> = {
   'Academia': '#6B7280',
-  'エントリー': CYAN,
-  'アソシエイト': SEA_GREEN,
-  'プロフェッショナル': MAGENTA,
-  'エキスパート': '#8B5CF6',
+  'Entry': CYAN,
+  'Associate': SEA_GREEN,
+  'Professional': MAGENTA,
+  'Expert': '#8B5CF6',
 };
 
 interface CourseResult {
@@ -119,7 +119,7 @@ export default function MyPage() {
 
   // Group user certs by level for display
   const levelOrder = ['academia', 'entry', 'associate', 'professional', 'expert'];
-  const levelLabelMap: Record<string, string> = { academia: 'Academia', entry: 'エントリー', associate: 'アソシエイト', professional: 'プロフェッショナル', expert: 'エキスパート' };
+  const levelLabelMap: Record<string, string> = { academia: 'Academia', entry: 'Entry', associate: 'Associate', professional: 'Professional', expert: 'Expert' };
 
   function groupByLevel(ucList: UserCertification[]) {
     return levelOrder

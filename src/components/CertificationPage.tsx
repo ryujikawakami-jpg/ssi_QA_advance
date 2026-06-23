@@ -15,10 +15,10 @@ const MAGENTA = '#E21776';
 
 const levelColors: Record<string, string> = {
   'Academia': '#6B7280',
-  'エントリー': CYAN,
-  'アソシエイト': SEA_GREEN,
-  'プロフェッショナル': MAGENTA,
-  'エキスパート': '#8B5CF6',
+  'Entry': CYAN,
+  'Associate': SEA_GREEN,
+  'Professional': MAGENTA,
+  'Expert': '#8B5CF6',
 };
 
 const categoryColors: Record<string, string> = {
@@ -81,7 +81,7 @@ export default function CertificationPage() {
 
   // Group certs by level in fixed order
   const levelOrder = ['academia', 'entry', 'associate', 'professional', 'expert'];
-  const levelLabelMap: Record<string, string> = { academia: 'Academia', entry: 'エントリー', associate: 'アソシエイト', professional: 'プロフェッショナル', expert: 'エキスパート' };
+  const levelLabelMap: Record<string, string> = { academia: 'Academia', entry: 'Entry', associate: 'Associate', professional: 'Professional', expert: 'Expert' };
   const levelGroups = levelOrder
     .map(level => ({
       level: levelLabelMap[level] ?? level,

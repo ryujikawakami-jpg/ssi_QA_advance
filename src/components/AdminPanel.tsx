@@ -988,10 +988,10 @@ const tdSt: React.CSSProperties = { padding: '8px 10px', fontSize: 13, color: DE
 // ══════════════════════════════════════
 const LEVEL_OPTIONS = [
   { value: 'academia', label: 'Academia' },
-  { value: 'entry', label: 'エントリー' },
-  { value: 'associate', label: 'アソシエイト' },
-  { value: 'professional', label: 'プロフェッショナル' },
-  { value: 'expert', label: 'エキスパート' },
+  { value: 'entry', label: 'Entry' },
+  { value: 'associate', label: 'Associate' },
+  { value: 'professional', label: 'Professional' },
+  { value: 'expert', label: 'Expert' },
 ];
 const CATEGORY_OPTIONS = ['国家資格', 'QA推奨', 'ベンダー系', 'ベンダーニュートラル系', 'AI系', '社内認定資格'];
 

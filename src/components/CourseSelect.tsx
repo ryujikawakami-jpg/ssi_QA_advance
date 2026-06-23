@@ -170,9 +170,20 @@ export default function CourseSelect() {
               </span>
             )}
 
-            <h2 style={{ fontSize: 18, fontWeight: 800, color: DEEP_BLUE, margin: '0 0 8px' }}>
-              {course.name}
-            </h2>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
+              <h2 style={{ fontSize: 18, fontWeight: 800, color: DEEP_BLUE, margin: 0 }}>
+                {course.name}
+              </h2>
+              {course.id !== 'academia' && (
+                <span style={{
+                  fontSize: 10, fontWeight: 700, color: '#fff',
+                  background: `linear-gradient(135deg, ${SEA_GREEN}, ${CYAN})`,
+                  padding: '2px 8px', borderRadius: 999, whiteSpace: 'nowrap',
+                }}>
+                  QA Engineer
+                </span>
+              )}
+            </div>
 
             <p style={{ fontSize: 12, color: '#888', lineHeight: 1.6, margin: '0 0 4px', minHeight: 40 }}>
               {course.description}
