@@ -698,14 +698,20 @@ function MasterData() {
 // ══════════════════════════════════════
 // Invite Management Tab
 // ══════════════════════════════════════
+interface InviteRow {
+  email: string;
+  role: string;
+  teamId: string;
+}
+
+const emptyRow = (): InviteRow => ({ email: '', role: 'member', teamId: '' });
+
 function InviteManagement() {
   const { user } = useAuth();
   const [invitations, setInvitations] = useState<Invitation[]>([]);
   const [teams, setTeams] = useState<Team[]>([]);
   const [loading, setLoading] = useState(true);
-  const [email, setEmail] = useState('');
-  const [role, setRole] = useState<string>('member');
-  const [teamId, setTeamId] = useState<string>('');
+  const [rows, setRows] = useState<InviteRow[]>([emptyRow()]);
   const [sending, setSending] = useState(false);
   const [feedback, setFeedback] = useState('');
 
@@ -724,36 +730,60 @@ function InviteManagement() {
 
   useEffect(() => { loadData(); }, [loadData]);
 
+  const updateRow = (idx: number, field: keyof InviteRow, value: string) => {
+    setRows(prev => prev.map((r, i) => i === idx ? { ...r, [field]: value } : r));
+  };
+
+  const addRow = () => {
+    if (rows.length >= 10) return;
+    setRows(prev => [...prev, emptyRow()]);
+  };
+
+  const removeRow = (idx: number) => {
+    if (rows.length <= 1) return;
+    setRows(prev => prev.filter((_, i) => i !== idx));
+  };
+
+  const validRows = rows.filter(r => r.email.trim() && r.email.includes('@widsley.com'));
+
   const handleInvite = async () => {
-    if (!email.trim()) return;
-    if (!email.includes('@widsley.com')) {
+    if (validRows.length === 0) {
       setFeedback('@widsley.com のアドレスを入力してください');
       return;
     }
     setSending(true);
     setFeedback('');
-    try {
-      await createInvitation(
-        email.trim(),
-        role,
-        teamId ? Number(teamId) : null,
-        user?.id ?? '',
-      );
-      // Send invite email via Google Apps Script
-      const teamName = teamId ? teams.find(t => t.id === Number(teamId))?.name ?? '' : '';
-      await sendInviteEmail(email.trim(), role, teamName);
+    let successCount = 0;
+    let failCount = 0;
+    const errors: string[] = [];
 
-      setEmail('');
-      setRole('member');
-      setTeamId('');
-      setFeedback('招待を登録し、招待メールを送信しました。');
-      await loadData();
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : '招待の登録に失敗しました';
-      setFeedback(msg.includes('duplicate') ? 'このメールアドレスは既に招待済みです' : msg);
-    } finally {
-      setSending(false);
+    for (const row of validRows) {
+      try {
+        await createInvitation(
+          row.email.trim(),
+          row.role,
+          row.teamId ? Number(row.teamId) : null,
+          user?.id ?? '',
+        );
+        const teamName = row.teamId ? teams.find(t => t.id === Number(row.teamId))?.name ?? '' : '';
+        await sendInviteEmail(row.email.trim(), row.role, teamName);
+        successCount++;
+      } catch (err: unknown) {
+        failCount++;
+        const msg = err instanceof Error ? err.message : '';
+        errors.push(`${row.email}: ${msg.includes('duplicate') ? '既に招待済み' : '登録失敗'}`);
+      }
     }
+
+    if (successCount > 0) {
+      setRows([emptyRow()]);
+    }
+    const parts: string[] = [];
+    if (successCount > 0) parts.push(`${successCount}件の招待を送信しました`);
+    if (failCount > 0) parts.push(`${failCount}件失敗: ${errors.join(', ')}`);
+    setFeedback(parts.join('。'));
+    await loadData();
+    setSending(false);
   };
 
   const handleDelete = async (id: number) => {
@@ -778,48 +808,77 @@ function InviteManagement() {
         background: '#f8fafc', borderRadius: 12, padding: '20px 24px', marginBottom: 24,
         border: '1px solid #e5eef5',
       }}>
-        <h3 style={{ fontSize: 15, fontWeight: 700, color: DEEP_BLUE, margin: '0 0 16px' }}>
-          新規招待
+        <h3 style={{ fontSize: 15, fontWeight: 700, color: DEEP_BLUE, margin: '0 0 12px' }}>
+          新規招待（最大10件）
         </h3>
-        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end' }}>
-          <div style={{ flex: '1 1 220px' }}>
-            <label style={labelStyle}>メールアドレス</label>
+
+        {/* Header row */}
+        <div style={{ display: 'flex', gap: 8, marginBottom: 6, padding: '0 4px' }}>
+          <div style={{ flex: '1 1 200px', fontSize: 11, fontWeight: 600, color: '#888' }}>メールアドレス</div>
+          <div style={{ flex: '0 0 110px', fontSize: 11, fontWeight: 600, color: '#888' }}>ロール</div>
+          <div style={{ flex: '0 0 140px', fontSize: 11, fontWeight: 600, color: '#888' }}>チーム</div>
+          <div style={{ flex: '0 0 28px' }} />
+        </div>
+
+        {/* Input rows */}
+        {rows.map((row, idx) => (
+          <div key={idx} style={{ display: 'flex', gap: 8, marginBottom: 6, alignItems: 'center' }}>
             <input
               type="email"
-              value={email}
-              onChange={e => setEmail(e.target.value)}
+              value={row.email}
+              onChange={e => updateRow(idx, 'email', e.target.value)}
               placeholder="name@widsley.com"
-              style={inputStyle}
+              style={{ ...inputStyle, flex: '1 1 200px' }}
             />
-          </div>
-          <div style={{ flex: '0 0 130px' }}>
-            <label style={labelStyle}>ロール</label>
-            <select value={role} onChange={e => setRole(e.target.value)} style={inputStyle}>
+            <select value={row.role} onChange={e => updateRow(idx, 'role', e.target.value)} style={{ ...inputStyle, flex: '0 0 110px' }}>
               <option value="member">メンバー</option>
               <option value="leader">リーダー</option>
               <option value="board">管理者</option>
             </select>
-          </div>
-          <div style={{ flex: '0 0 160px' }}>
-            <label style={labelStyle}>チーム</label>
-            <select value={teamId} onChange={e => setTeamId(e.target.value)} style={inputStyle}>
+            <select value={row.teamId} onChange={e => updateRow(idx, 'teamId', e.target.value)} style={{ ...inputStyle, flex: '0 0 140px' }}>
               <option value="">未割当</option>
               {teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
             </select>
+            <button
+              onClick={() => removeRow(idx)}
+              disabled={rows.length <= 1}
+              style={{
+                flex: '0 0 28px', height: 28, fontSize: 16, color: rows.length <= 1 ? '#ddd' : '#e74c3c',
+                background: 'none', border: 'none', cursor: rows.length <= 1 ? 'default' : 'pointer', padding: 0,
+              }}
+            >
+              ✕
+            </button>
           </div>
+        ))}
+
+        {/* Add row + Submit */}
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginTop: 10 }}>
+          {rows.length < 10 && (
+            <button
+              onClick={addRow}
+              style={{
+                padding: '6px 14px', fontSize: 13, fontWeight: 600, color: CYAN,
+                background: `${CYAN}10`, border: `1px solid ${CYAN}30`, borderRadius: 8, cursor: 'pointer',
+              }}
+            >
+              ＋ 行を追加
+            </button>
+          )}
           <button
             onClick={handleInvite}
-            disabled={sending || !email.trim()}
+            disabled={sending || validRows.length === 0}
             style={{
-              padding: '9px 20px', fontSize: 14, fontWeight: 700, color: '#fff',
-              background: sending ? '#ccc' : `linear-gradient(135deg, ${SEA_GREEN}, ${CYAN})`,
-              border: 'none', borderRadius: 8, cursor: sending ? 'wait' : 'pointer',
+              padding: '8px 24px', fontSize: 14, fontWeight: 700, color: '#fff',
+              background: sending || validRows.length === 0 ? '#ccc' : `linear-gradient(135deg, ${SEA_GREEN}, ${CYAN})`,
+              border: 'none', borderRadius: 8, cursor: sending || validRows.length === 0 ? 'not-allowed' : 'pointer',
               whiteSpace: 'nowrap',
             }}
           >
-            {sending ? '送信中...' : '招待登録'}
+            {sending ? '送信中...' : `${validRows.length}件を招待`}
           </button>
         </div>
+
         {feedback && (
           <div style={{
             marginTop: 10, fontSize: 13, fontWeight: 600,
@@ -916,7 +975,6 @@ function InviteManagement() {
   );
 }
 
-const labelStyle: React.CSSProperties = { display: 'block', fontSize: 12, fontWeight: 600, color: '#666', marginBottom: 4 };
 const inputStyle: React.CSSProperties = { width: '100%', padding: '8px 10px', fontSize: 14, border: '1px solid #ddd', borderRadius: 8, background: '#fff' };
 const thSt: React.CSSProperties = { textAlign: 'left', padding: '8px 10px', fontSize: 12, fontWeight: 700, color: '#8893A4' };
 const tdSt: React.CSSProperties = { padding: '8px 10px', fontSize: 13, color: DEEP_BLUE };
