@@ -50,6 +50,7 @@ export default function MyPage() {
   const [loading, setLoading] = useState(true);
   const [teamName, setTeamName] = useState<string>('');
   const [courseResults, setCourseResults] = useState<CourseResult[]>([]);
+  const [careerScope, setCareerScope] = useState<{ groupId: string; trackIdx: number; trackName: string } | null>(null);
   const [allCerts, setAllCerts] = useState<CertificationRecord[]>([]);
   const [userCerts, setUserCerts] = useState<UserCertification[]>([]);
   const [modalCert, setModalCert] = useState<CertificationRecord | null>(null);
@@ -110,6 +111,19 @@ export default function MyPage() {
     loadData();
   }, [loadData]);
 
+  useEffect(() => {
+    if (!user) return;
+    try {
+      const raw = localStorage.getItem(`career_scope_${user.id}`);
+      if (raw) {
+        const parsed = JSON.parse(raw) as { groupId: string; trackIdx: number; trackName: string };
+        setCareerScope(parsed);
+      }
+    } catch {
+      // ignore malformed data
+    }
+  }, [user]);
+
   const getCertById = (id: number): CertificationRecord | undefined =>
     allCerts.find(c => c.id === id);
 
@@ -153,6 +167,22 @@ export default function MyPage() {
     setModalSource(source);
   };
 
+  const groupNameMap: Record<string, string> = {
+    qa: 'QAエンジニア',
+    app: 'アプリケーションエンジニア',
+    infra: 'クラウドインフラエンジニア',
+    pm: 'プロジェクトマネージメント',
+    biz: 'ビジネス・推進',
+  };
+
+  const groupColorMap: Record<string, string> = {
+    qa: '#7B2FB0',
+    app: '#0E5A8A',
+    infra: '#2E6B2E',
+    pm: '#8A6D1A',
+    biz: '#B5481F',
+  };
+
   if (!user) return null;
 
   if (loading) {
@@ -188,6 +218,51 @@ export default function MyPage() {
             </span>
           </div>
         </div>
+      </section>
+
+      {/* キャリアスコープ */}
+      <section style={sectionStyle}>
+        <h2 style={sectionTitleStyle}>キャリアスコープ</h2>
+        {careerScope ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+              <span style={{
+                fontSize: 13, fontWeight: 700, color: '#fff',
+                background: groupColorMap[careerScope.groupId] ?? '#666',
+                padding: '4px 12px', borderRadius: 999,
+              }}>
+                {groupNameMap[careerScope.groupId] ?? careerScope.groupId}
+              </span>
+              <span style={{ fontSize: 15, fontWeight: 700, color: DEEP_BLUE }}>
+                {careerScope.trackName}
+              </span>
+            </div>
+            <span
+              onClick={() => navigate('/career')}
+              style={{
+                fontSize: 13, color: CYAN, cursor: 'pointer', fontWeight: 600,
+                textDecoration: 'underline',
+              }}
+            >
+              スコープを変更
+            </span>
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <p style={{ fontSize: 13, color: '#999', margin: 0 }}>
+              キャリアパスから目指す職種を選択してスコープしましょう
+            </p>
+            <span
+              onClick={() => navigate('/career')}
+              style={{
+                fontSize: 13, color: CYAN, cursor: 'pointer', fontWeight: 600,
+                textDecoration: 'underline',
+              }}
+            >
+              キャリアマップを見る
+            </span>
+          </div>
+        )}
       </section>
 
       {/* Course results */}

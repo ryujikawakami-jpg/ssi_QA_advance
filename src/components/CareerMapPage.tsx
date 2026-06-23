@@ -68,7 +68,7 @@ const TRACK_GROUPS: TrackGroupDef[] = [
     color: '#7B2FB0',
     tracks: [
       {
-        name: 'QAエンジニア',
+        name: 'マネジメント',
         cells: {
           ENTRY: {
             title: '実行者',
@@ -97,7 +97,7 @@ const TRACK_GROUPS: TrackGroupDef[] = [
         },
       },
       {
-        name: '自動化系',
+        name: 'テスト自動化',
         cells: {
           ENTRY: {
             title: '実行者',
@@ -126,7 +126,7 @@ const TRACK_GROUPS: TrackGroupDef[] = [
         },
       },
       {
-        name: 'セキュリティ系',
+        name: 'セキュリティ',
         cells: {
           ASSOCIATE: {
             title: '侵害分析',
@@ -410,12 +410,54 @@ const TRACK_GROUPS: TrackGroupDef[] = [
   },
 ];
 
+// ── "まだ決まっていない方" data ──
+interface UndecidedEntry {
+  groupId: string;
+  trackIdx: number;
+  label: string;
+  role: string;
+}
+
+const ENTRY_LEVEL_LIST: UndecidedEntry[] = [
+  { groupId: 'qa', trackIdx: 0, label: 'QAエンジニア (マネジメント)', role: '実行者' },
+  { groupId: 'qa', trackIdx: 1, label: 'QAエンジニア (テスト自動化)', role: '実行者' },
+  { groupId: 'app', trackIdx: 0, label: 'ソフトウェアエンジニア', role: 'プログラマー' },
+  { groupId: 'infra', trackIdx: 0, label: 'クラウドインフラ', role: 'インフラオペレーター' },
+  { groupId: 'biz', trackIdx: 0, label: 'バックオフィス・DX推進', role: 'IT管理担当' },
+  { groupId: 'biz', trackIdx: 1, label: 'カスタマーサポート', role: 'CS担当者' },
+  { groupId: 'biz', trackIdx: 2, label: 'データアナリスト', role: 'データオペレーター' },
+  { groupId: 'biz', trackIdx: 3, label: 'マーケティング', role: 'コンテンツ担当' },
+];
+
+const ASSOCIATE_LEVEL_LIST: UndecidedEntry[] = [
+  ...ENTRY_LEVEL_LIST.map(e => {
+    // Find the associate title for the same track
+    const group = TRACK_GROUPS.find(g => g.id === e.groupId);
+    const track = group?.tracks[e.trackIdx];
+    const assocCell = track?.cells.ASSOCIATE;
+    return { ...e, role: assocCell?.title ?? e.role };
+  }),
+  { groupId: 'qa', trackIdx: 2, label: 'QAエンジニア (セキュリティ)', role: '侵害分析' },
+  { groupId: 'pm', trackIdx: 0, label: 'PM', role: 'PMO' },
+];
+
 // ── Helpers ──
+
+/** Fuzzy cert name matcher: exact first, then contains */
+function findCertByName(allCerts: CertificationRecord[], name: string): CertificationRecord | undefined {
+  const exact = allCerts.find(c => c.name === name);
+  if (exact) return exact;
+  // Check if DB cert name contains search name or vice versa
+  const lower = name.toLowerCase();
+  return allCerts.find(c => {
+    const cLower = c.name.toLowerCase();
+    return cLower.includes(lower) || lower.includes(cLower);
+  });
+}
 
 /** Collect all certs from a route (ACADEMIA + track cells) */
 function collectRouteCerts(track: TrackDef): { certName: string; level: StageKey }[] {
   const result: { certName: string; level: StageKey }[] = [];
-  // ACADEMIA certs
   if (ACADEMIA_CELL.certs) {
     for (const c of ACADEMIA_CELL.certs) {
       result.push({ certName: c, level: 'ACADEMIA' });
@@ -460,6 +502,15 @@ export default function CareerMapPage() {
   const { user } = useAuth();
   const userId = user?.id ?? 'anonymous';
 
+  // Mobile detection
+  const [isMobile, setIsMobile] = useState<boolean>(window.innerWidth < 768);
+
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
   // Section 1 state
   const [expandedGroupId, setExpandedGroupId] = useState<string | null>(null);
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
@@ -468,12 +519,19 @@ export default function CareerMapPage() {
   // Section 2 modal
   const [modalStageKey, setModalStageKey] = useState<StageKey | null>(null);
 
+  // Cert detail modal
+  const [certDetailName, setCertDetailName] = useState<string | null>(null);
+
   // Scope
   const [scope, setScope] = useState<ScopeData | null>(null);
 
   // Certifications data
   const [allCerts, setAllCerts] = useState<CertificationRecord[]>([]);
   const [userCerts, setUserCerts] = useState<UserCertification[]>([]);
+
+  // Undecided expandable sections
+  const [showEntryList, setShowEntryList] = useState(false);
+  const [showAssociateList, setShowAssociateList] = useState(false);
 
   // Load scope from localStorage
   useEffect(() => {
@@ -522,7 +580,6 @@ export default function CareerMapPage() {
     } else {
       setExpandedGroupId(groupId);
     }
-    // Clear track selection when toggling group
     setSelectedGroupId(null);
     setSelectedTrackIdx(null);
   };
@@ -549,8 +606,7 @@ export default function CareerMapPage() {
   };
 
   const handleAddCert = async (certName: string) => {
-    // Find the certification record by name
-    const certRecord = allCerts.find(c => c.name === certName);
+    const certRecord = findCertByName(allCerts, certName);
     if (!certRecord || userId === 'anonymous') return;
     try {
       await upsertUserCertification(userId, certRecord.id, 'interested');
@@ -560,12 +616,16 @@ export default function CareerMapPage() {
     }
   };
 
-  const getUserCertStatus = (certName: string): UserCertification['status'] | null => {
-    const certRecord = allCerts.find(c => c.name === certName);
+  const getUserCertStatus = useCallback((certName: string): UserCertification['status'] | null => {
+    const certRecord = findCertByName(allCerts, certName);
     if (!certRecord) return null;
     const uc = userCerts.find(u => u.certification_id === certRecord.id);
     return uc?.status ?? null;
-  };
+  }, [allCerts, userCerts]);
+
+  // Cert detail data
+  const certDetailRecord = certDetailName ? findCertByName(allCerts, certDetailName) : undefined;
+  const certDetailStatus = certDetailName ? getUserCertStatus(certDetailName) : null;
 
   // Modal data
   const modalCell = modalStageKey
@@ -601,9 +661,15 @@ export default function CareerMapPage() {
         onClick={(e) => { e.stopPropagation(); handleAddCert(certName); }}
         style={{ ...s.addCertBtn, fontSize }}
       >
-        ＋ お気に入りに追加
+        + お気に入りに追加
       </button>
     );
+  };
+
+  const handleUndecidedCardClick = (entry: UndecidedEntry) => {
+    setExpandedGroupId(entry.groupId);
+    setSelectedGroupId(entry.groupId);
+    setSelectedTrackIdx(entry.trackIdx);
   };
 
   return (
@@ -615,6 +681,59 @@ export default function CareerMapPage() {
         <p style={s.mainNote}>
           まだ決まっていない方は、Entry/Associateで幅広くスキルを身につけることで、どの専門にも進めます
         </p>
+
+        {/* Undecided expandable sections */}
+        <div style={{ marginBottom: 16 }}>
+          <button
+            onClick={() => setShowEntryList(!showEntryList)}
+            style={s.undecidedToggle}
+          >
+            <span>{showEntryList ? '▼' : '▶'}</span>
+            <span style={{ marginLeft: 8 }}>Entry レベルの職種一覧</span>
+          </button>
+          {showEntryList && (
+            <div style={s.undecidedGrid}>
+              {ENTRY_LEVEL_LIST.map((entry, idx) => (
+                <button
+                  key={idx}
+                  onClick={() => handleUndecidedCardClick(entry)}
+                  style={{
+                    ...s.undecidedCard,
+                    borderLeftColor: TRACK_GROUPS.find(g => g.id === entry.groupId)?.color ?? '#ccc',
+                  }}
+                >
+                  <div style={s.undecidedCardLabel}>{entry.label}</div>
+                  <div style={s.undecidedCardRole}>{entry.role}</div>
+                </button>
+              ))}
+            </div>
+          )}
+
+          <button
+            onClick={() => setShowAssociateList(!showAssociateList)}
+            style={{ ...s.undecidedToggle, marginTop: 8 }}
+          >
+            <span>{showAssociateList ? '▼' : '▶'}</span>
+            <span style={{ marginLeft: 8 }}>Associate レベルの職種一覧</span>
+          </button>
+          {showAssociateList && (
+            <div style={s.undecidedGrid}>
+              {ASSOCIATE_LEVEL_LIST.map((entry, idx) => (
+                <button
+                  key={idx}
+                  onClick={() => handleUndecidedCardClick(entry)}
+                  style={{
+                    ...s.undecidedCard,
+                    borderLeftColor: TRACK_GROUPS.find(g => g.id === entry.groupId)?.color ?? '#ccc',
+                  }}
+                >
+                  <div style={s.undecidedCardLabel}>{entry.label}</div>
+                  <div style={s.undecidedCardRole}>{entry.role}</div>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
 
         {/* Track group grid */}
         <div style={s.groupGrid}>
@@ -677,7 +796,14 @@ export default function CareerMapPage() {
             {selectedGroup.name} / {selectedTrack.name} のキャリアルート
           </h2>
 
-          <div style={s.routeRow}>
+          <div style={{
+            ...s.routeRow,
+            flexDirection: isMobile ? 'column' : 'row',
+            flexWrap: isMobile ? undefined : 'nowrap' as const,
+            overflowX: isMobile ? undefined : 'auto' as const,
+            gap: isMobile ? 0 : 8,
+            alignItems: isMobile ? 'stretch' : 'stretch',
+          }}>
             {STAGE_KEYS.map((stageKey, idx) => {
               const isAcademia = stageKey === 'ACADEMIA';
               const cell = isAcademia ? ACADEMIA_CELL : selectedTrack.cells[stageKey];
@@ -685,11 +811,21 @@ export default function CareerMapPage() {
               if (!cell) return null;
 
               return (
-                <div key={stageKey} style={{ display: 'flex', alignItems: 'center', flexShrink: 0 }}>
+                <div key={stageKey} style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  flexShrink: isMobile ? 0 : 1,
+                  minWidth: isMobile ? undefined : 150,
+                  flexDirection: isMobile ? 'column' : 'row',
+                }}>
                   {/* Arrow before card (except first) */}
                   {idx > 0 && (
-                    <div style={{ ...s.routeArrow, color: selectedGroup.color }}>
-                      &#9654;
+                    <div style={{
+                      ...s.routeArrow,
+                      color: selectedGroup.color,
+                      margin: isMobile ? '4px 0' : '0 4px',
+                    }}>
+                      {isMobile ? '\u25BC' : '\u25B6'}
                     </div>
                   )}
                   {/* Route card */}
@@ -699,6 +835,10 @@ export default function CareerMapPage() {
                       ...s.routeCard,
                       borderTopColor: selectedGroup.color,
                       cursor: 'pointer',
+                      width: isMobile ? '100%' : undefined,
+                      maxWidth: isMobile ? undefined : 180,
+                      minWidth: isMobile ? undefined : 150,
+                      flexShrink: 1,
                     }}
                   >
                     <span style={{ ...s.levelBadge, background: `${selectedGroup.color}18`, color: selectedGroup.color }}>
@@ -756,9 +896,11 @@ export default function CareerMapPage() {
                 return (
                   <div
                     key={idx}
+                    onClick={() => setCertDetailName(item.certName)}
                     style={{
                       ...s.certListItem,
                       opacity: isAcquired ? 0.55 : 1,
+                      cursor: 'pointer',
                     }}
                   >
                     <div style={s.certListLeft}>
@@ -776,7 +918,7 @@ export default function CareerMapPage() {
         );
       })()}
 
-      {/* ── Modal ── */}
+      {/* ── Route Card Modal ── */}
       {modalStageKey && modalCell && selectedGroup && (
         <div style={s.modalOverlay} onClick={() => setModalStageKey(null)}>
           <div style={s.modalCard} onClick={e => e.stopPropagation()}>
@@ -811,7 +953,11 @@ export default function CareerMapPage() {
                 <h3 style={s.modalSectionTitle}>推奨資格</h3>
                 <div style={s.modalCertList}>
                   {modalCell.certs.map((certName, i) => (
-                    <div key={i} style={s.modalCertRow}>
+                    <div
+                      key={i}
+                      onClick={() => setCertDetailName(certName)}
+                      style={{ ...s.modalCertRow, cursor: 'pointer' }}
+                    >
                       <span style={s.modalCertName}>{certName}</span>
                       {renderCertStatus(certName, true)}
                     </div>
@@ -819,6 +965,57 @@ export default function CareerMapPage() {
                 </div>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* ── Cert Detail Modal ── */}
+      {certDetailName && (
+        <div style={s.certDetailOverlay} onClick={() => setCertDetailName(null)}>
+          <div style={s.certDetailCard} onClick={e => e.stopPropagation()}>
+            <button onClick={() => setCertDetailName(null)} style={s.modalClose}>
+              &#10005;
+            </button>
+
+            <h2 style={s.certDetailTitle}>{certDetailName}</h2>
+
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' as const, marginBottom: 12 }}>
+              {certDetailRecord?.level && (
+                <span style={s.certDetailBadge}>{certDetailRecord.level}</span>
+              )}
+              {certDetailRecord?.category && (
+                <span style={{ ...s.certDetailBadge, background: '#dbeafe', color: '#2563eb' }}>
+                  {certDetailRecord.category}
+                </span>
+              )}
+            </div>
+
+            <p style={s.certDetailDesc}>
+              {certDetailRecord?.description || '説明はまだありません'}
+            </p>
+
+            <div style={{ marginTop: 16 }}>
+              {certDetailStatus === 'acquired' ? (
+                <span style={{ ...s.certStatusBadge, background: '#e2e8f0', color: '#94a3b8', fontSize: 14, padding: '6px 16px' }}>
+                  取得済み
+                </span>
+              ) : certDetailStatus === 'studying' ? (
+                <span style={{ ...s.certStatusBadge, background: '#dbeafe', color: '#2563eb', fontSize: 14, padding: '6px 16px' }}>
+                  学習中
+                </span>
+              ) : certDetailStatus === 'interested' ? (
+                <span style={{ ...s.certStatusBadge, background: '#fce7f3', color: MAGENTA, fontSize: 14, padding: '6px 16px' }}>
+                  気になる登録済み
+                </span>
+              ) : (
+                <button
+                  onClick={() => handleAddCert(certDetailName)}
+                  style={s.certDetailFavBtn}
+                >
+                  気になる
+                </button>
+              )}
+            </div>
           </div>
         </div>
       )}
@@ -858,8 +1055,56 @@ const s: Record<string, CSSProperties> = {
     borderRadius: 8,
     padding: '8px 12px',
     lineHeight: 1.6,
-    margin: '0 0 20px',
+    margin: '0 0 12px',
   },
+
+  // Undecided sections
+  undecidedToggle: {
+    display: 'flex',
+    alignItems: 'center',
+    fontSize: 14,
+    fontWeight: 700,
+    color: DEEP_BLUE,
+    background: '#f1f5f9',
+    border: '1px solid #e2e8f0',
+    borderRadius: 8,
+    padding: '8px 14px',
+    cursor: 'pointer',
+    width: '100%',
+    textAlign: 'left' as const,
+  },
+  undecidedGrid: {
+    display: 'flex',
+    flexWrap: 'wrap' as const,
+    gap: 8,
+    padding: '10px 0 4px 8px',
+  },
+  undecidedCard: {
+    display: 'flex',
+    flexDirection: 'column' as const,
+    alignItems: 'flex-start',
+    gap: 2,
+    padding: '8px 12px',
+    background: '#fff',
+    borderRadius: 8,
+    borderLeft: '3px solid',
+    border: '1px solid #e2e8f0',
+    cursor: 'pointer',
+    fontSize: 13,
+    textAlign: 'left' as const,
+    minWidth: 140,
+  },
+  undecidedCardLabel: {
+    fontWeight: 700,
+    color: DEEP_BLUE,
+    fontSize: 13,
+  },
+  undecidedCardRole: {
+    fontWeight: 500,
+    color: '#64748b',
+    fontSize: 12,
+  },
+
   groupGrid: {
     display: 'flex',
     flexDirection: 'column' as const,
@@ -932,19 +1177,16 @@ const s: Record<string, CSSProperties> = {
   },
   routeRow: {
     display: 'flex',
-    flexWrap: 'wrap' as const,
     alignItems: 'stretch',
-    gap: 0,
+    gap: 8,
     marginBottom: 20,
   },
   routeArrow: {
     fontSize: 16,
-    margin: '0 6px',
     flexShrink: 0,
     alignSelf: 'center',
   },
   routeCard: {
-    width: 150,
     background: '#fff',
     borderRadius: 12,
     borderTop: '4px solid',
@@ -953,7 +1195,6 @@ const s: Record<string, CSSProperties> = {
     display: 'flex',
     flexDirection: 'column' as const,
     gap: 4,
-    flexShrink: 0,
   },
   levelBadge: {
     display: 'inline-block',
@@ -1201,5 +1442,64 @@ const s: Record<string, CSSProperties> = {
     fontSize: 13,
     fontWeight: 600,
     color: DEEP_BLUE,
+  },
+
+  // Cert detail modal
+  certDetailOverlay: {
+    position: 'fixed' as const,
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    background: 'rgba(3,32,47,0.65)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 10000,
+    padding: 16,
+  },
+  certDetailCard: {
+    position: 'relative' as const,
+    background: '#fff',
+    borderRadius: 16,
+    padding: '28px 24px',
+    maxWidth: 440,
+    width: '100%',
+    maxHeight: '80vh',
+    overflowY: 'auto' as const,
+    boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
+  },
+  certDetailTitle: {
+    fontSize: 22,
+    fontWeight: 800,
+    color: DEEP_BLUE,
+    margin: '0 0 10px',
+    paddingRight: 36,
+  },
+  certDetailBadge: {
+    display: 'inline-block',
+    fontSize: 12,
+    fontWeight: 600,
+    padding: '3px 10px',
+    borderRadius: 10,
+    background: '#f0fdf4',
+    color: '#16a34a',
+  },
+  certDetailDesc: {
+    fontSize: 14,
+    color: '#475569',
+    lineHeight: 1.7,
+    margin: 0,
+  },
+  certDetailFavBtn: {
+    fontSize: 15,
+    fontWeight: 700,
+    padding: '10px 28px',
+    borderRadius: 24,
+    border: 'none',
+    background: MAGENTA,
+    color: '#fff',
+    cursor: 'pointer',
+    boxShadow: `0 4px 14px ${MAGENTA}40`,
   },
 };
