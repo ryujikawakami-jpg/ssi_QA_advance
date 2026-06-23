@@ -1,20 +1,21 @@
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import type { CSSProperties } from 'react';
+import { useAuth } from '../context/AuthContext';
+import {
+  fetchCertifications,
+  fetchUserCertifications,
+  upsertUserCertification,
+} from '../lib/data';
+import type { CertificationRecord, UserCertification } from '../lib/data';
 
 // ── Brand colors ──
 const DEEP_BLUE = '#03202F';
 const CYAN = '#3DB7E4';
+const SEA_GREEN = '#50DAB0';
+const MAGENTA = '#E21776';
 
 // ── Types ──
 type StageKey = 'ACADEMIA' | 'ENTRY' | 'ASSOCIATE' | 'PROFESSIONAL' | 'EXPERT';
-
-interface StageInfo {
-  key: StageKey;
-  label: string;
-  sublabel: string;
-  period: string;
-  gradient: string;
-}
 
 interface CellData {
   title: string;
@@ -35,44 +36,29 @@ interface TrackGroupDef {
   tracks: TrackDef[];
 }
 
-// ── Stage definitions ──
-const STAGES: StageInfo[] = [
-  {
-    key: 'ACADEMIA',
-    label: 'ACADEMIA',
-    sublabel: 'IT未経験者',
-    period: '0〜半年',
-    gradient: 'linear-gradient(135deg, #1e293b 0%, #334155 100%)',
-  },
-  {
-    key: 'ENTRY',
-    label: 'ENTRY',
-    sublabel: 'IT初心者',
-    period: '半年〜1年',
-    gradient: `linear-gradient(135deg, ${CYAN} 0%, #2196F3 100%)`,
-  },
-  {
-    key: 'ASSOCIATE',
-    label: 'ASSOCIATE',
-    sublabel: 'IT中級者',
-    period: '1〜3年',
-    gradient: 'linear-gradient(135deg, #50DAB0 0%, #26a69a 100%)',
-  },
-  {
-    key: 'PROFESSIONAL',
-    label: 'PROFESSIONAL',
-    sublabel: 'IT上級者',
-    period: '3〜5年',
-    gradient: 'linear-gradient(135deg, #E21776 0%, #c2185b 100%)',
-  },
-  {
-    key: 'EXPERT',
-    label: 'EXPERT',
-    sublabel: 'ITエキスパート',
-    period: '5年〜',
-    gradient: 'linear-gradient(135deg, #7c3aed 0%, #5b21b6 100%)',
-  },
-];
+interface ScopeData {
+  groupId: string;
+  trackIdx: number;
+  trackName: string;
+}
+
+// ── Stage labels ──
+const STAGE_KEYS: StageKey[] = ['ACADEMIA', 'ENTRY', 'ASSOCIATE', 'PROFESSIONAL', 'EXPERT'];
+const STAGE_LABELS: Record<StageKey, string> = {
+  ACADEMIA: 'ACADEMIA',
+  ENTRY: 'ENTRY',
+  ASSOCIATE: 'ASSOCIATE',
+  PROFESSIONAL: 'PROFESSIONAL',
+  EXPERT: 'EXPERT',
+};
+
+// ── Common ACADEMIA cell ──
+const ACADEMIA_CELL: CellData = {
+  title: 'QA基礎',
+  role: 'ITキャリアスタート。研修でQAエンジニアの基礎を学び、案件を通してIT知識と経験を増やす',
+  skills: ['社会人基礎力', 'QA基礎知識', 'テスト技法理解', 'テスト実施（指導下）'],
+  certs: ['JSTQB FL'],
+};
 
 // ── Track group data ──
 const TRACK_GROUPS: TrackGroupDef[] = [
@@ -84,12 +70,6 @@ const TRACK_GROUPS: TrackGroupDef[] = [
       {
         name: 'QAエンジニア',
         cells: {
-          ACADEMIA: {
-            title: 'QA基礎',
-            role: 'QA基礎知識を学び、テスト実施の基本を身につける',
-            skills: ['社会人基礎力', 'QA基礎知識', 'テスト技法理解', 'テスト実施（指導下）'],
-            certs: ['JSTQB FL'],
-          },
           ENTRY: {
             title: '実行者',
             role: 'テスト仕様書に基づき、バグを確実に発見・報告すること',
@@ -278,7 +258,7 @@ const TRACK_GROUPS: TrackGroupDef[] = [
   },
   {
     id: 'pm',
-    name: 'プロジェクトマネージメント',
+    name: 'PM',
     color: '#8A6D1A',
     tracks: [
       {
@@ -430,473 +410,415 @@ const TRACK_GROUPS: TrackGroupDef[] = [
   },
 ];
 
-// ── Flatten all tracks with unique IDs ──
-interface FlatTrack {
-  trackId: string;
-  groupId: string;
-  groupName: string;
-  trackName: string;
-  color: string;
-  cells: Partial<Record<StageKey, CellData>>;
-  /** First stage index where a cell exists */
-  startIdx: number;
-  /** Last stage index where a cell exists */
-  endIdx: number;
-}
+// ── Helpers ──
 
-const STAGE_KEYS: StageKey[] = ['ACADEMIA', 'ENTRY', 'ASSOCIATE', 'PROFESSIONAL', 'EXPERT'];
-
-function buildFlatTracks(): FlatTrack[] {
-  const result: FlatTrack[] = [];
-  for (const group of TRACK_GROUPS) {
-    for (let tIdx = 0; tIdx < group.tracks.length; tIdx++) {
-      const track = group.tracks[tIdx];
-      const trackId = `${group.id}:${tIdx}`;
-      const stageIndices = STAGE_KEYS
-        .map((k, i) => (track.cells[k] ? i : -1))
-        .filter(i => i >= 0);
-      result.push({
-        trackId,
-        groupId: group.id,
-        groupName: group.name,
-        trackName: track.name,
-        color: group.color,
-        cells: track.cells,
-        startIdx: stageIndices.length > 0 ? stageIndices[0] : 0,
-        endIdx: stageIndices.length > 0 ? stageIndices[stageIndices.length - 1] : 0,
-      });
+/** Collect all certs from a route (ACADEMIA + track cells) */
+function collectRouteCerts(track: TrackDef): { certName: string; level: StageKey }[] {
+  const result: { certName: string; level: StageKey }[] = [];
+  // ACADEMIA certs
+  if (ACADEMIA_CELL.certs) {
+    for (const c of ACADEMIA_CELL.certs) {
+      result.push({ certName: c, level: 'ACADEMIA' });
+    }
+  }
+  for (const stageKey of STAGE_KEYS) {
+    if (stageKey === 'ACADEMIA') continue;
+    const cell = track.cells[stageKey];
+    if (cell?.certs) {
+      for (const c of cell.certs) {
+        result.push({ certName: c, level: stageKey });
+      }
     }
   }
   return result;
 }
 
-const FLAT_TRACKS = buildFlatTracks();
+function scopeKey(userId: string): string {
+  return `career_scope_${userId}`;
+}
 
-// ── Column widths ──
-const LABEL_COL_W = 140;
-const STAGE_COL_W = 220;
-const GAP_COL_W = 48;
-const ROW_H = 200;
-const HEADER_H = 80;
-const TOTAL_W = LABEL_COL_W + STAGE_KEYS.length * STAGE_COL_W + (STAGE_KEYS.length - 1) * GAP_COL_W + 40;
+function loadScope(userId: string): ScopeData | null {
+  try {
+    const raw = localStorage.getItem(scopeKey(userId));
+    if (!raw) return null;
+    return JSON.parse(raw) as ScopeData;
+  } catch {
+    return null;
+  }
+}
+
+function saveScope(userId: string, data: ScopeData): void {
+  localStorage.setItem(scopeKey(userId), JSON.stringify(data));
+}
+
+function removeScope(userId: string): void {
+  localStorage.removeItem(scopeKey(userId));
+}
 
 // ── Component ──
 export default function CareerMapPage() {
-  const [activeGroupFilter, setActiveGroupFilter] = useState<string | null>(null);
-  const [selectedTrackId, setSelectedTrackId] = useState<string | null>(null);
-  const [hoveredCard, setHoveredCard] = useState<string | null>(null);
+  const { user } = useAuth();
+  const userId = user?.id ?? 'anonymous';
 
-  const hasSelection = activeGroupFilter !== null || selectedTrackId !== null;
+  // Section 1 state
+  const [expandedGroupId, setExpandedGroupId] = useState<string | null>(null);
+  const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
+  const [selectedTrackIdx, setSelectedTrackIdx] = useState<number | null>(null);
 
-  const isTrackHighlighted = (track: FlatTrack): boolean => {
-    if (selectedTrackId) return track.trackId === selectedTrackId;
-    if (activeGroupFilter) return track.groupId === activeGroupFilter;
-    return false;
+  // Section 2 modal
+  const [modalStageKey, setModalStageKey] = useState<StageKey | null>(null);
+
+  // Scope
+  const [scope, setScope] = useState<ScopeData | null>(null);
+
+  // Certifications data
+  const [allCerts, setAllCerts] = useState<CertificationRecord[]>([]);
+  const [userCerts, setUserCerts] = useState<UserCertification[]>([]);
+
+  // Load scope from localStorage
+  useEffect(() => {
+    const saved = loadScope(userId);
+    if (saved) {
+      setScope(saved);
+      setSelectedGroupId(saved.groupId);
+      setSelectedTrackIdx(saved.trackIdx);
+      setExpandedGroupId(saved.groupId);
+    }
+  }, [userId]);
+
+  // Fetch certifications
+  const loadCerts = useCallback(async () => {
+    try {
+      const [certs, uCerts] = await Promise.all([
+        fetchCertifications(),
+        fetchUserCertifications(userId === 'anonymous' ? undefined : userId),
+      ]);
+      setAllCerts(certs);
+      setUserCerts(uCerts);
+    } catch {
+      // silently fail
+    }
+  }, [userId]);
+
+  useEffect(() => {
+    loadCerts();
+  }, [loadCerts]);
+
+  // Derived state
+  const selectedGroup = selectedGroupId
+    ? TRACK_GROUPS.find(g => g.id === selectedGroupId) ?? null
+    : null;
+  const selectedTrack = selectedGroup && selectedTrackIdx !== null
+    ? selectedGroup.tracks[selectedTrackIdx] ?? null
+    : null;
+  const isScoped = scope !== null
+    && scope.groupId === selectedGroupId
+    && scope.trackIdx === selectedTrackIdx;
+
+  // Handlers
+  const handleGroupClick = (groupId: string) => {
+    if (expandedGroupId === groupId) {
+      setExpandedGroupId(null);
+    } else {
+      setExpandedGroupId(groupId);
+    }
+    // Clear track selection when toggling group
+    setSelectedGroupId(null);
+    setSelectedTrackIdx(null);
   };
 
-  const getTrackOpacity = (track: FlatTrack): number => {
-    if (!hasSelection) return 1;
-    return isTrackHighlighted(track) ? 1 : 0.4;
+  const handleSubTrackClick = (groupId: string, trackIdx: number) => {
+    setSelectedGroupId(groupId);
+    setSelectedTrackIdx(trackIdx);
   };
 
-  const toggleGroupFilter = (groupId: string) => {
-    setSelectedTrackId(null);
-    setActiveGroupFilter(prev => (prev === groupId ? null : groupId));
+  const handleScope = () => {
+    if (!selectedGroup || selectedTrackIdx === null || !selectedTrack) return;
+    const data: ScopeData = {
+      groupId: selectedGroup.id,
+      trackIdx: selectedTrackIdx,
+      trackName: selectedTrack.name,
+    };
+    saveScope(userId, data);
+    setScope(data);
   };
 
-  const handleCardClick = (trackId: string) => {
-    setActiveGroupFilter(null);
-    setSelectedTrackId(prev => (prev === trackId ? null : trackId));
+  const handleUnscope = () => {
+    removeScope(userId);
+    setScope(null);
   };
 
-  const clearSelection = () => {
-    setActiveGroupFilter(null);
-    setSelectedTrackId(null);
+  const handleAddCert = async (certName: string) => {
+    // Find the certification record by name
+    const certRecord = allCerts.find(c => c.name === certName);
+    if (!certRecord || userId === 'anonymous') return;
+    try {
+      await upsertUserCertification(userId, certRecord.id, 'interested');
+      await loadCerts();
+    } catch {
+      // silently fail
+    }
   };
 
-  /** Get x position for a stage column */
-  const stageX = (stageIdx: number): number => {
-    return LABEL_COL_W + stageIdx * (STAGE_COL_W + GAP_COL_W);
+  const getUserCertStatus = (certName: string): UserCertification['status'] | null => {
+    const certRecord = allCerts.find(c => c.name === certName);
+    if (!certRecord) return null;
+    const uc = userCerts.find(u => u.certification_id === certRecord.id);
+    return uc?.status ?? null;
   };
 
-  /** Get y position for a track row */
-  const trackY = (trackIdx: number): number => {
-    return HEADER_H + trackIdx * ROW_H;
-  };
+  // Modal data
+  const modalCell = modalStageKey
+    ? (modalStageKey === 'ACADEMIA' ? ACADEMIA_CELL : selectedTrack?.cells[modalStageKey] ?? null)
+    : null;
 
-  // Build selected path summary
-  const selectedTrack = selectedTrackId ? FLAT_TRACKS.find(t => t.trackId === selectedTrackId) : null;
+  const renderCertStatus = (certName: string, compact?: boolean) => {
+    const status = getUserCertStatus(certName);
+    const fontSize = compact ? 10 : 12;
+    if (status === 'acquired') {
+      return (
+        <span style={{ ...s.certStatusBadge, background: '#e2e8f0', color: '#94a3b8', fontSize }}>
+          取得済み
+        </span>
+      );
+    }
+    if (status === 'studying') {
+      return (
+        <span style={{ ...s.certStatusBadge, background: '#dbeafe', color: '#2563eb', fontSize }}>
+          学習中
+        </span>
+      );
+    }
+    if (status === 'interested') {
+      return (
+        <span style={{ ...s.certStatusBadge, background: '#fce7f3', color: MAGENTA, fontSize }}>
+          気になる
+        </span>
+      );
+    }
+    return (
+      <button
+        onClick={(e) => { e.stopPropagation(); handleAddCert(certName); }}
+        style={{ ...s.addCertBtn, fontSize }}
+      >
+        ＋ お気に入りに追加
+      </button>
+    );
+  };
 
   return (
-    <div style={styles.page}>
-      {/* Title */}
-      <div style={styles.titleBar}>
-        <h1 style={styles.title}>Career Roadmap</h1>
-        <p style={styles.subtitle}>Widsley エンジニア キャリアロードマップ</p>
-      </div>
+    <div style={s.page}>
+      {/* ── Section 1: Track Selection ── */}
+      <div style={s.section1}>
+        <h1 style={s.mainTitle}>キャリアパス</h1>
+        <p style={s.mainSubtitle}>なりたい職種を選んで、キャリアルートを確認しましょう</p>
+        <p style={s.mainNote}>
+          まだ決まっていない方は、Entry/Associateで幅広くスキルを身につけることで、どの専門にも進めます
+        </p>
 
-      {/* Instruction + filter chips */}
-      <div style={styles.filterBar}>
-        <div style={styles.filterInstruction}>
-          なりたい職種を選んでルートを確認
-        </div>
-        <div style={styles.filterChips}>
+        {/* Track group grid */}
+        <div style={s.groupGrid}>
           {TRACK_GROUPS.map(group => {
-            const isActive = activeGroupFilter === group.id;
+            const isExpanded = expandedGroupId === group.id;
             return (
-              <button
-                key={group.id}
-                onClick={() => toggleGroupFilter(group.id)}
-                style={{
-                  ...styles.filterChip,
-                  background: isActive ? group.color : '#f1f5f9',
-                  color: isActive ? '#fff' : '#475569',
-                  borderColor: isActive ? group.color : '#cbd5e1',
-                  fontWeight: isActive ? 700 : 500,
-                }}
-              >
-                <span
-                  style={{
-                    display: 'inline-block',
-                    width: 8,
-                    height: 8,
-                    borderRadius: '50%',
-                    background: isActive ? '#fff' : group.color,
-                    marginRight: 6,
-                    flexShrink: 0,
-                  }}
-                />
-                {group.name}
-              </button>
-            );
-          })}
-          {hasSelection && (
-            <button onClick={clearSelection} style={styles.clearBtn}>
-              クリア
-            </button>
-          )}
-        </div>
-        <div style={styles.hintBox}>
-          まだ決まってない方へ：Entry/Associateレベルでは幅広くスキルを身につけることで、どの専門にも進めます
-        </div>
-      </div>
-
-      {/* Horizontal scrollable pathway map */}
-      <div style={styles.scrollContainer}>
-        <div style={{ ...styles.mapContainer, width: TOTAL_W, height: HEADER_H + FLAT_TRACKS.length * ROW_H + 40 }}>
-
-          {/* Stage column headers */}
-          {STAGES.map((stage, sIdx) => {
-            const x = stageX(sIdx);
-            return (
-              <div
-                key={stage.key}
-                style={{
-                  position: 'absolute',
-                  left: x,
-                  top: 0,
-                  width: STAGE_COL_W,
-                  height: HEADER_H - 8,
-                  background: stage.gradient,
-                  borderRadius: 12,
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  color: '#fff',
-                  zIndex: 10,
-                }}
-              >
-                <div style={{ fontSize: 16, fontWeight: 800, letterSpacing: 1 }}>{stage.label}</div>
-                <div style={{ fontSize: 11, opacity: 0.85, marginTop: 2 }}>
-                  {stage.sublabel} / {stage.period}
-                </div>
-              </div>
-            );
-          })}
-
-          {/* Arrow connectors between stage headers */}
-          {STAGES.slice(0, -1).map((_, sIdx) => {
-            const x1 = stageX(sIdx) + STAGE_COL_W;
-            const x2 = stageX(sIdx + 1);
-            const midY = (HEADER_H - 8) / 2;
-            return (
-              <div
-                key={`header-arrow-${sIdx}`}
-                style={{
-                  position: 'absolute',
-                  left: x1,
-                  top: midY - 1,
-                  width: x2 - x1,
-                  height: 2,
-                  background: '#cbd5e1',
-                  zIndex: 5,
-                }}
-              >
-                {/* Arrow head */}
-                <div style={{
-                  position: 'absolute',
-                  right: -1,
-                  top: -5,
-                  width: 0,
-                  height: 0,
-                  borderTop: '6px solid transparent',
-                  borderBottom: '6px solid transparent',
-                  borderLeft: '8px solid #cbd5e1',
-                }} />
-              </div>
-            );
-          })}
-
-          {/* Track rows */}
-          {FLAT_TRACKS.map((track, tIdx) => {
-            const opacity = getTrackOpacity(track);
-            const highlighted = isTrackHighlighted(track);
-            const rowTop = trackY(tIdx);
-
-            // Line from first to last cell
-            const lineStartX = stageX(track.startIdx) + STAGE_COL_W / 2;
-            const lineEndX = stageX(track.endIdx) + STAGE_COL_W / 2;
-            const lineCenterY = rowTop + ROW_H / 2;
-
-            return (
-              <div key={track.trackId} style={{ opacity, transition: 'opacity 0.3s ease' }}>
-                {/* Track label (left column) */}
+              <div key={group.id} style={{ width: '100%' }}>
                 <div
+                  onClick={() => handleGroupClick(group.id)}
                   style={{
-                    position: 'absolute',
-                    left: 0,
-                    top: rowTop,
-                    width: LABEL_COL_W - 8,
-                    height: ROW_H,
-                    display: 'flex',
-                    flexDirection: 'column',
-                    justifyContent: 'center',
-                    alignItems: 'flex-end',
-                    paddingRight: 12,
-                    zIndex: 5,
+                    ...s.groupCard,
+                    borderLeftColor: group.color,
+                    boxShadow: isExpanded
+                      ? `0 4px 16px ${group.color}30`
+                      : '0 1px 4px rgba(0,0,0,0.08)',
                   }}
                 >
-                  <div
-                    style={{
-                      width: 10,
-                      height: 10,
-                      borderRadius: '50%',
-                      background: track.color,
-                      marginBottom: 4,
-                    }}
-                  />
-                  <div style={{
-                    fontSize: 12,
-                    fontWeight: 700,
-                    color: track.color,
-                    textAlign: 'right',
-                    lineHeight: 1.3,
-                  }}>
-                    {track.trackName}
+                  <div style={{ ...s.groupDot, background: group.color }} />
+                  <div style={s.groupCardText}>
+                    <div style={{ ...s.groupName, color: group.color }}>{group.name}</div>
+                    <div style={s.groupTrackCount}>{group.tracks.length}トラック</div>
                   </div>
-                  <div style={{
-                    fontSize: 10,
-                    color: '#94a3b8',
-                    textAlign: 'right',
-                  }}>
-                    {track.groupName}
+                  <div style={{ ...s.groupChevron, transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)' }}>
+                    &#9654;
                   </div>
                 </div>
 
-                {/* Connecting line through the row */}
-                <div
-                  style={{
-                    position: 'absolute',
-                    left: lineStartX,
-                    top: lineCenterY - 1,
-                    width: lineEndX - lineStartX,
-                    height: highlighted ? 4 : 2,
-                    background: highlighted ? track.color : '#e2e8f0',
-                    borderRadius: 2,
-                    zIndex: 1,
-                    transition: 'all 0.3s ease',
-                    boxShadow: highlighted ? `0 0 8px ${track.color}60` : 'none',
-                  }}
-                />
-
-                {/* Cells/Cards at each stage */}
-                {STAGE_KEYS.map((stageKey, sIdx) => {
-                  const cell = track.cells[stageKey];
-                  if (!cell) {
-                    // If the line passes through this stage, draw a dot
-                    if (sIdx > track.startIdx && sIdx < track.endIdx) {
+                {/* Sub-tracks */}
+                {isExpanded && (
+                  <div style={s.subTrackList}>
+                    {group.tracks.map((track, tIdx) => {
+                      const isSelected = selectedGroupId === group.id && selectedTrackIdx === tIdx;
                       return (
-                        <div
-                          key={`${track.trackId}-${stageKey}-pass`}
+                        <button
+                          key={tIdx}
+                          onClick={() => handleSubTrackClick(group.id, tIdx)}
                           style={{
-                            position: 'absolute',
-                            left: stageX(sIdx) + STAGE_COL_W / 2 - 4,
-                            top: lineCenterY - 4,
-                            width: 8,
-                            height: 8,
-                            borderRadius: '50%',
-                            background: highlighted ? track.color : '#cbd5e1',
-                            zIndex: 2,
-                            transition: 'all 0.3s ease',
+                            ...s.subTrackBtn,
+                            background: isSelected ? group.color : '#f8fafc',
+                            color: isSelected ? '#fff' : DEEP_BLUE,
+                            borderColor: isSelected ? group.color : '#e2e8f0',
                           }}
-                        />
+                        >
+                          {track.name}
+                        </button>
                       );
-                    }
-                    return null;
-                  }
-
-                  const cardKey = `${track.trackId}-${stageKey}`;
-                  const isHovered = hoveredCard === cardKey;
-                  const isCardActive = highlighted || isHovered;
-
-                  return (
-                    <div
-                      key={cardKey}
-                      onClick={() => handleCardClick(track.trackId)}
-                      onMouseEnter={() => setHoveredCard(cardKey)}
-                      onMouseLeave={() => setHoveredCard(null)}
-                      style={{
-                        position: 'absolute',
-                        left: stageX(sIdx) + 4,
-                        top: rowTop + 12,
-                        width: STAGE_COL_W - 8,
-                        height: ROW_H - 24,
-                        background: '#fff',
-                        borderRadius: 10,
-                        borderLeft: `4px solid ${track.color}`,
-                        padding: '10px 12px',
-                        cursor: 'pointer',
-                        zIndex: 3,
-                        overflow: 'hidden',
-                        boxShadow: isCardActive
-                          ? `0 0 0 2px ${track.color}40, 0 4px 16px rgba(0,0,0,0.12)`
-                          : '0 1px 4px rgba(0,0,0,0.08)',
-                        transform: isHovered ? 'scale(1.02)' : 'scale(1)',
-                        transition: 'all 0.2s ease',
-                      }}
-                    >
-                      {/* Station dot on the line */}
-                      <div style={{
-                        position: 'absolute',
-                        left: (STAGE_COL_W - 8) / 2 - 8,
-                        top: ROW_H / 2 - 12 - 8,
-                        width: 16,
-                        height: 16,
-                        borderRadius: '50%',
-                        background: highlighted ? track.color : '#fff',
-                        border: `3px solid ${track.color}`,
-                        zIndex: 4,
-                        boxShadow: highlighted ? `0 0 6px ${track.color}80` : 'none',
-                        transition: 'all 0.3s ease',
-                      }} />
-
-                      {/* Card content */}
-                      <div style={{ position: 'relative', zIndex: 5 }}>
-                        <div style={styles.cardTitle}>{cell.title}</div>
-                        <div style={{ ...styles.cardTrackLabel, background: `${track.color}18`, color: track.color }}>
-                          {track.groupName}
-                        </div>
-                        <div style={styles.cardRole}>{cell.role}</div>
-                        <div style={styles.cardSkillsSection}>
-                          {cell.skills.slice(0, 3).map((skill, i) => (
-                            <span key={i} style={styles.skillTag}>{skill}</span>
-                          ))}
-                          {cell.skills.length > 3 && (
-                            <span style={styles.skillMore}>+{cell.skills.length - 3}</span>
-                          )}
-                        </div>
-                        {cell.certs && cell.certs.length > 0 && (
-                          <div style={styles.certRow}>
-                            {cell.certs.slice(0, 2).map((cert, i) => (
-                              <span key={i} style={styles.certBadge}>{cert}</span>
-                            ))}
-                            {cell.certs.length > 2 && (
-                              <span style={styles.certMore}>+{cell.certs.length - 2}</span>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-
-                {/* Arrow segments between consecutive cells in this track */}
-                {STAGE_KEYS.map((stageKey, sIdx) => {
-                  if (sIdx === 0) return null;
-                  const prevKey = STAGE_KEYS[sIdx - 1];
-                  const hasCurr = !!track.cells[stageKey];
-                  const hasPrev = !!track.cells[prevKey];
-                  // Draw arrow only between two existing consecutive cells
-                  if (!hasCurr || !hasPrev) return null;
-                  const arrowX = stageX(sIdx) - GAP_COL_W / 2;
-                  return (
-                    <div
-                      key={`${track.trackId}-arrow-${sIdx}`}
-                      style={{
-                        position: 'absolute',
-                        left: arrowX - 4,
-                        top: lineCenterY - 6,
-                        width: 0,
-                        height: 0,
-                        borderTop: '6px solid transparent',
-                        borderBottom: '6px solid transparent',
-                        borderLeft: `8px solid ${highlighted ? track.color : '#cbd5e1'}`,
-                        zIndex: 2,
-                        transition: 'all 0.3s ease',
-                      }}
-                    />
-                  );
-                })}
+                    })}
+                  </div>
+                )}
               </div>
             );
           })}
         </div>
       </div>
 
-      {/* Selected track summary panel */}
-      {selectedTrack && (
-        <div style={styles.summaryPanel}>
-          <div style={styles.summaryHeader}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <div style={{
-                width: 12,
-                height: 12,
-                borderRadius: '50%',
-                background: selectedTrack.color,
-              }} />
-              <span style={styles.summaryTitle}>
-                {selectedTrack.groupName} / {selectedTrack.trackName}
-              </span>
-            </div>
-            <button onClick={clearSelection} style={styles.summaryClear}>
-              クリア
-            </button>
-          </div>
-          <div style={styles.summaryCards}>
-            {STAGE_KEYS.map((stageKey, sIdx) => {
-              const cell = selectedTrack.cells[stageKey];
+      {/* ── Section 2: Route Display ── */}
+      {selectedTrack && selectedGroup && (
+        <div style={s.section2}>
+          <h2 style={s.routeTitle}>
+            {selectedGroup.name} / {selectedTrack.name} のキャリアルート
+          </h2>
+
+          <div style={s.routeRow}>
+            {STAGE_KEYS.map((stageKey, idx) => {
+              const isAcademia = stageKey === 'ACADEMIA';
+              const cell = isAcademia ? ACADEMIA_CELL : selectedTrack.cells[stageKey];
+              if (!cell && !isAcademia) return null;
               if (!cell) return null;
+
               return (
-                <div key={stageKey} style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
-                  <div style={styles.summaryItem}>
-                    <div style={{
-                      ...styles.summaryDot,
-                      background: selectedTrack.color,
-                    }} />
-                    <div style={styles.summaryInfo}>
-                      <span style={styles.summaryStage}>{stageKey}</span>
-                      <span style={styles.summaryRole}>{cell.title}</span>
+                <div key={stageKey} style={{ display: 'flex', alignItems: 'center', flexShrink: 0 }}>
+                  {/* Arrow before card (except first) */}
+                  {idx > 0 && (
+                    <div style={{ ...s.routeArrow, color: selectedGroup.color }}>
+                      &#9654;
+                    </div>
+                  )}
+                  {/* Route card */}
+                  <div
+                    onClick={() => setModalStageKey(stageKey)}
+                    style={{
+                      ...s.routeCard,
+                      borderTopColor: selectedGroup.color,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <span style={{ ...s.levelBadge, background: `${selectedGroup.color}18`, color: selectedGroup.color }}>
+                      {STAGE_LABELS[stageKey]}
+                    </span>
+                    <div style={s.routeCardTitle}>{cell.title}</div>
+                    <div style={s.routeCardRole}>
+                      {cell.role.length > 50 ? cell.role.slice(0, 50) + '...' : cell.role}
+                    </div>
+                    <div style={{ ...s.routeCardHint, color: selectedGroup.color }}>
+                      詳細を見る →
                     </div>
                   </div>
-                  {/* Arrow to next existing cell */}
-                  {(() => {
-                    const hasNext = STAGE_KEYS.slice(sIdx + 1).some(k => !!selectedTrack.cells[k]);
-                    return hasNext ? <div style={styles.summaryArrow}>→</div> : null;
-                  })()}
                 </div>
               );
             })}
+          </div>
+
+          {/* Scope button */}
+          <div style={s.scopeBtnRow}>
+            {isScoped ? (
+              <div style={s.scopedRow}>
+                <span style={s.scopedBadge}>スコープ中</span>
+                <button onClick={handleUnscope} style={s.unscopeBtn}>
+                  スコープを解除
+                </button>
+              </div>
+            ) : (
+              <button onClick={handleScope} style={s.scopeBtn}>
+                このキャリアパスをスコープする
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── Section 3: Scope Summary ── */}
+      {scope && (() => {
+        const scopeGroup = TRACK_GROUPS.find(g => g.id === scope.groupId);
+        const scopeTrack = scopeGroup?.tracks[scope.trackIdx];
+        if (!scopeGroup || !scopeTrack) return null;
+        const routeCerts = collectRouteCerts(scopeTrack);
+        if (routeCerts.length === 0) return null;
+
+        return (
+          <div style={s.section3}>
+            <h2 style={s.scopeSummaryTitle}>スコープ推奨資格・スキル一覧</h2>
+            <p style={s.scopeSummarySubtitle}>
+              {scopeGroup.name} / {scopeTrack.name}
+            </p>
+            <div style={s.certList}>
+              {routeCerts.map((item, idx) => {
+                const status = getUserCertStatus(item.certName);
+                const isAcquired = status === 'acquired';
+                return (
+                  <div
+                    key={idx}
+                    style={{
+                      ...s.certListItem,
+                      opacity: isAcquired ? 0.55 : 1,
+                    }}
+                  >
+                    <div style={s.certListLeft}>
+                      <span style={s.certName}>{item.certName}</span>
+                      <span style={s.certLevel}>{STAGE_LABELS[item.level]}</span>
+                    </div>
+                    <div style={s.certListRight}>
+                      {renderCertStatus(item.certName)}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* ── Modal ── */}
+      {modalStageKey && modalCell && selectedGroup && (
+        <div style={s.modalOverlay} onClick={() => setModalStageKey(null)}>
+          <div style={s.modalCard} onClick={e => e.stopPropagation()}>
+            <button onClick={() => setModalStageKey(null)} style={s.modalClose}>
+              &#10005;
+            </button>
+
+            <span style={{ ...s.modalLevelBadge, background: `${selectedGroup.color}18`, color: selectedGroup.color }}>
+              {STAGE_LABELS[modalStageKey]}
+            </span>
+            <h2 style={s.modalTitle}>{modalCell.title}</h2>
+            <p style={s.modalGroupLabel}>{selectedGroup.name}</p>
+
+            <div style={s.modalSection}>
+              <h3 style={s.modalSectionTitle}>期待される役割</h3>
+              <p style={s.modalSectionBody}>{modalCell.role}</p>
+            </div>
+
+            <div style={s.modalSection}>
+              <h3 style={s.modalSectionTitle}>必要スキル</h3>
+              <div style={s.modalSkillTags}>
+                {modalCell.skills.map((skill, i) => (
+                  <span key={i} style={{ ...s.modalSkillTag, background: `${selectedGroup.color}12`, color: selectedGroup.color }}>
+                    {skill}
+                  </span>
+                ))}
+              </div>
+            </div>
+
+            {modalCell.certs && modalCell.certs.length > 0 && (
+              <div style={s.modalSection}>
+                <h3 style={s.modalSectionTitle}>推奨資格</h3>
+                <div style={s.modalCertList}>
+                  {modalCell.certs.map((certName, i) => (
+                    <div key={i} style={s.modalCertRow}>
+                      <span style={s.modalCertName}>{certName}</span>
+                      {renderCertStatus(certName, true)}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -905,235 +827,379 @@ export default function CareerMapPage() {
 }
 
 // ── Styles ──
-const styles: Record<string, CSSProperties> = {
+const s: Record<string, CSSProperties> = {
   page: {
     margin: '0 auto',
-    padding: '24px 16px 120px',
+    padding: '24px 16px 80px',
     fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-    position: 'relative',
-    maxWidth: 1400,
-  },
-  titleBar: {
-    textAlign: 'center',
-    marginBottom: 20,
-  },
-  title: {
-    fontSize: 32,
-    fontWeight: 800,
-    color: DEEP_BLUE,
-    margin: 0,
-    letterSpacing: -0.5,
-  },
-  subtitle: {
-    fontSize: 14,
-    color: '#64748b',
-    marginTop: 4,
+    maxWidth: 900,
   },
 
-  // Filter bar
-  filterBar: {
-    marginBottom: 24,
-    padding: '16px 20px',
-    background: '#f8fafc',
-    borderRadius: 14,
-    border: '1px solid #e2e8f0',
+  // Section 1
+  section1: {
+    marginBottom: 32,
   },
-  filterInstruction: {
-    fontSize: 14,
-    fontWeight: 700,
+  mainTitle: {
+    fontSize: 28,
+    fontWeight: 800,
     color: DEEP_BLUE,
-    marginBottom: 10,
+    margin: '0 0 4px',
   },
-  filterChips: {
+  mainSubtitle: {
+    fontSize: 15,
+    color: '#475569',
+    margin: '0 0 8px',
+  },
+  mainNote: {
+    fontSize: 13,
+    color: '#64748b',
+    background: '#f8fafc',
+    border: '1px dashed #cbd5e1',
+    borderRadius: 8,
+    padding: '8px 12px',
+    lineHeight: 1.6,
+    margin: '0 0 20px',
+  },
+  groupGrid: {
+    display: 'flex',
+    flexDirection: 'column' as const,
+    gap: 10,
+  },
+  groupCard: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 12,
+    padding: '14px 16px',
+    background: '#fff',
+    borderRadius: 10,
+    borderLeft: '5px solid',
+    cursor: 'pointer',
+    transition: 'box-shadow 0.2s ease',
+  },
+  groupDot: {
+    width: 10,
+    height: 10,
+    borderRadius: '50%',
+    flexShrink: 0,
+  },
+  groupCardText: {
+    flex: 1,
+  },
+  groupName: {
+    fontSize: 15,
+    fontWeight: 700,
+  },
+  groupTrackCount: {
+    fontSize: 12,
+    color: '#94a3b8',
+  },
+  groupChevron: {
+    fontSize: 12,
+    color: '#94a3b8',
+    transition: 'transform 0.2s ease',
+    flexShrink: 0,
+  },
+  subTrackList: {
     display: 'flex',
     flexWrap: 'wrap' as const,
     gap: 8,
-    alignItems: 'center',
-    marginBottom: 10,
+    padding: '8px 0 0 22px',
   },
-  filterChip: {
+  subTrackBtn: {
     fontSize: 13,
-    padding: '6px 14px',
+    fontWeight: 600,
+    padding: '6px 16px',
     borderRadius: 20,
     border: '1.5px solid',
     cursor: 'pointer',
     transition: 'all 0.15s ease',
-    display: 'flex',
-    alignItems: 'center',
-    lineHeight: '20px',
     background: 'none',
   },
-  clearBtn: {
+
+  // Section 2
+  section2: {
+    marginBottom: 32,
+    padding: '20px',
+    background: '#f8fafc',
+    borderRadius: 14,
+    border: '1px solid #e2e8f0',
+  },
+  routeTitle: {
+    fontSize: 16,
+    fontWeight: 700,
+    color: DEEP_BLUE,
+    margin: '0 0 16px',
+  },
+  routeRow: {
+    display: 'flex',
+    flexWrap: 'wrap' as const,
+    alignItems: 'stretch',
+    gap: 0,
+    marginBottom: 20,
+  },
+  routeArrow: {
+    fontSize: 16,
+    margin: '0 6px',
+    flexShrink: 0,
+    alignSelf: 'center',
+  },
+  routeCard: {
+    width: 150,
+    background: '#fff',
+    borderRadius: 12,
+    borderTop: '4px solid',
+    padding: '12px 14px',
+    boxShadow: '0 1px 6px rgba(0,0,0,0.08)',
+    display: 'flex',
+    flexDirection: 'column' as const,
+    gap: 4,
+    flexShrink: 0,
+  },
+  levelBadge: {
+    display: 'inline-block',
+    fontSize: 10,
+    fontWeight: 700,
+    padding: '2px 8px',
+    borderRadius: 8,
+    alignSelf: 'flex-start',
+    letterSpacing: 0.5,
+  },
+  routeCardTitle: {
+    fontSize: 16,
+    fontWeight: 800,
+    color: DEEP_BLUE,
+    lineHeight: 1.3,
+  },
+  routeCardRole: {
     fontSize: 12,
+    color: '#475569',
+    lineHeight: 1.5,
+    flex: 1,
+  },
+  routeCardHint: {
+    fontSize: 11,
     fontWeight: 600,
-    padding: '6px 14px',
+    marginTop: 4,
+  },
+
+  // Scope button area
+  scopeBtnRow: {
+    display: 'flex',
+    justifyContent: 'center',
+  },
+  scopeBtn: {
+    fontSize: 15,
+    fontWeight: 700,
+    padding: '12px 32px',
+    borderRadius: 28,
+    border: 'none',
+    background: `linear-gradient(135deg, ${SEA_GREEN} 0%, ${CYAN} 100%)`,
+    color: '#fff',
+    cursor: 'pointer',
+    boxShadow: '0 4px 14px rgba(61,183,228,0.3)',
+  },
+  scopedRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 12,
+  },
+  scopedBadge: {
+    fontSize: 13,
+    fontWeight: 700,
+    padding: '6px 16px',
+    borderRadius: 20,
+    background: `${SEA_GREEN}20`,
+    color: '#0d9488',
+  },
+  unscopeBtn: {
+    fontSize: 13,
+    fontWeight: 600,
+    padding: '6px 16px',
     borderRadius: 20,
     border: '1.5px solid #ef4444',
     background: '#fff',
     color: '#ef4444',
     cursor: 'pointer',
-    lineHeight: '20px',
   },
-  hintBox: {
-    fontSize: 12,
-    color: '#64748b',
+
+  // Section 3
+  section3: {
+    marginBottom: 32,
+    padding: '20px',
     background: '#fff',
-    border: '1px dashed #cbd5e1',
-    borderRadius: 8,
-    padding: '8px 12px',
-    lineHeight: 1.5,
+    borderRadius: 14,
+    border: '1px solid #e2e8f0',
+    boxShadow: '0 1px 6px rgba(0,0,0,0.06)',
   },
-
-  // Scroll container
-  scrollContainer: {
-    overflowX: 'auto' as const,
-    overflowY: 'visible' as const,
-    paddingBottom: 20,
-    WebkitOverflowScrolling: 'touch',
-  },
-  mapContainer: {
-    position: 'relative' as const,
-    minHeight: 400,
-  },
-
-  // Card content styles
-  cardTitle: {
-    fontSize: 15,
-    fontWeight: 800,
+  scopeSummaryTitle: {
+    fontSize: 16,
+    fontWeight: 700,
     color: DEEP_BLUE,
-    marginBottom: 3,
-    lineHeight: 1.2,
+    margin: '0 0 4px',
   },
-  cardTrackLabel: {
-    display: 'inline-block',
-    fontSize: 10,
-    fontWeight: 600,
-    padding: '1px 8px',
-    borderRadius: 8,
-    marginBottom: 4,
-  },
-  cardRole: {
-    fontSize: 11,
-    color: '#475569',
-    lineHeight: 1.4,
-    marginBottom: 6,
-    display: '-webkit-box',
-    WebkitLineClamp: 2,
-    WebkitBoxOrient: 'vertical' as const,
-    overflow: 'hidden',
-  },
-  cardSkillsSection: {
-    display: 'flex',
-    flexWrap: 'wrap' as const,
-    gap: 3,
-    marginBottom: 4,
-  },
-  skillTag: {
-    fontSize: 9,
+  scopeSummarySubtitle: {
+    fontSize: 13,
     color: '#64748b',
-    background: '#f1f5f9',
-    padding: '1px 6px',
-    borderRadius: 4,
-    whiteSpace: 'nowrap' as const,
+    margin: '0 0 16px',
   },
-  skillMore: {
-    fontSize: 9,
-    color: '#94a3b8',
-    fontWeight: 600,
-  },
-  certRow: {
+  certList: {
     display: 'flex',
-    flexWrap: 'wrap' as const,
-    gap: 3,
+    flexDirection: 'column' as const,
+    gap: 8,
   },
-  certBadge: {
-    fontSize: 9,
-    color: '#fff',
-    background: '#64748b',
-    padding: '1px 6px',
-    borderRadius: 4,
-    whiteSpace: 'nowrap' as const,
-  },
-  certMore: {
-    fontSize: 9,
-    color: '#94a3b8',
-    fontWeight: 600,
-  },
-
-  // Summary panel
-  summaryPanel: {
-    position: 'fixed' as const,
-    bottom: 0,
-    left: 0,
-    right: 0,
-    background: '#fff',
-    borderTop: `3px solid ${CYAN}`,
-    boxShadow: '0 -4px 24px rgba(0,0,0,0.12)',
-    padding: '14px 24px',
-    zIndex: 1000,
-  },
-  summaryHeader: {
+  certListItem: {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 10,
+    padding: '10px 14px',
+    background: '#f8fafc',
+    borderRadius: 10,
+    border: '1px solid #f1f5f9',
   },
-  summaryTitle: {
+  certListLeft: {
+    display: 'flex',
+    flexDirection: 'column' as const,
+    gap: 2,
+  },
+  certName: {
     fontSize: 14,
-    fontWeight: 700,
+    fontWeight: 600,
     color: DEEP_BLUE,
   },
-  summaryClear: {
+  certLevel: {
+    fontSize: 11,
+    fontWeight: 600,
+    color: '#94a3b8',
+    letterSpacing: 0.5,
+  },
+  certListRight: {
+    flexShrink: 0,
+  },
+
+  // Cert status badges
+  certStatusBadge: {
+    display: 'inline-block',
+    fontSize: 12,
+    fontWeight: 600,
+    padding: '3px 10px',
+    borderRadius: 12,
+  },
+  addCertBtn: {
     fontSize: 12,
     fontWeight: 600,
     padding: '4px 12px',
     borderRadius: 12,
-    border: '1px solid #ef4444',
+    border: `1.5px solid ${MAGENTA}`,
     background: '#fff',
-    color: '#ef4444',
+    color: MAGENTA,
     cursor: 'pointer',
   },
-  summaryCards: {
+
+  // Modal
+  modalOverlay: {
+    position: 'fixed' as const,
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    background: 'rgba(3,32,47,0.55)',
     display: 'flex',
     alignItems: 'center',
-    gap: 4,
-    overflowX: 'auto' as const,
-    paddingBottom: 4,
+    justifyContent: 'center',
+    zIndex: 9999,
+    padding: 16,
   },
-  summaryItem: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 6,
-    flexShrink: 0,
+  modalCard: {
+    position: 'relative' as const,
+    background: '#fff',
+    borderRadius: 16,
+    padding: '28px 24px',
+    maxWidth: 520,
+    width: '100%',
+    maxHeight: '85vh',
+    overflowY: 'auto' as const,
+    boxShadow: '0 20px 60px rgba(0,0,0,0.25)',
   },
-  summaryDot: {
-    width: 8,
-    height: 8,
+  modalClose: {
+    position: 'absolute' as const,
+    top: 12,
+    right: 12,
+    width: 32,
+    height: 32,
     borderRadius: '50%',
-    flexShrink: 0,
-  },
-  summaryInfo: {
+    border: 'none',
+    background: '#f1f5f9',
+    fontSize: 16,
+    cursor: 'pointer',
     display: 'flex',
-    flexDirection: 'column' as const,
-    gap: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    color: '#64748b',
   },
-  summaryStage: {
-    fontSize: 9,
-    fontWeight: 700,
-    color: '#94a3b8',
-    textTransform: 'uppercase' as const,
-    letterSpacing: 0.5,
-  },
-  summaryRole: {
+  modalLevelBadge: {
+    display: 'inline-block',
     fontSize: 12,
     fontWeight: 700,
-    color: DEEP_BLUE,
-    whiteSpace: 'nowrap' as const,
+    padding: '3px 12px',
+    borderRadius: 10,
+    letterSpacing: 0.5,
+    marginBottom: 8,
   },
-  summaryArrow: {
-    fontSize: 16,
-    color: '#94a3b8',
-    margin: '0 4px',
-    flexShrink: 0,
+  modalTitle: {
+    fontSize: 24,
+    fontWeight: 800,
+    color: DEEP_BLUE,
+    margin: '0 0 4px',
+  },
+  modalGroupLabel: {
+    fontSize: 13,
+    color: '#64748b',
+    margin: '0 0 20px',
+  },
+  modalSection: {
+    marginBottom: 18,
+  },
+  modalSectionTitle: {
+    fontSize: 13,
+    fontWeight: 700,
+    color: '#475569',
+    margin: '0 0 8px',
+    borderBottom: '1px solid #f1f5f9',
+    paddingBottom: 4,
+  },
+  modalSectionBody: {
+    fontSize: 14,
+    color: DEEP_BLUE,
+    lineHeight: 1.7,
+    margin: 0,
+  },
+  modalSkillTags: {
+    display: 'flex',
+    flexWrap: 'wrap' as const,
+    gap: 6,
+  },
+  modalSkillTag: {
+    fontSize: 12,
+    fontWeight: 600,
+    padding: '4px 10px',
+    borderRadius: 8,
+  },
+  modalCertList: {
+    display: 'flex',
+    flexDirection: 'column' as const,
+    gap: 6,
+  },
+  modalCertRow: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: '6px 10px',
+    background: '#f8fafc',
+    borderRadius: 8,
+  },
+  modalCertName: {
+    fontSize: 13,
+    fontWeight: 600,
+    color: DEEP_BLUE,
   },
 };
