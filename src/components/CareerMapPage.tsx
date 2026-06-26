@@ -668,9 +668,17 @@ export default function CareerMapPage() {
   };
 
   const handleUndecidedCardClick = (entry: UndecidedEntry) => {
+    // Select the track AND open the modal for the appropriate stage
     setExpandedGroupId(entry.groupId);
     setSelectedGroupId(entry.groupId);
     setSelectedTrackIdx(entry.trackIdx);
+
+    // Determine which stage this entry belongs to
+    const isEntry = ENTRY_LEVEL_LIST.some(e => e.groupId === entry.groupId && e.trackIdx === entry.trackIdx && e.role === entry.role);
+    const stageKey: StageKey = isEntry ? 'ENTRY' : 'ASSOCIATE';
+
+    // Open the detail modal directly
+    setTimeout(() => setModalStageKey(stageKey), 50);
   };
 
   return (
