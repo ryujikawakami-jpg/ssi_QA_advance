@@ -5,6 +5,7 @@ import {
   fetchCertifications,
   fetchUserCertifications,
   upsertUserCertification,
+  removeUserCertification,
 } from '../lib/data';
 import type { CertificationRecord, UserCertification } from '../lib/data';
 
@@ -611,16 +612,7 @@ export default function CareerMapPage() {
     setScope(null);
   };
 
-  const handleAddCert = async (certName: string) => {
-    const certRecord = findCertByName(allCerts, certName);
-    if (!certRecord || userId === 'anonymous') return;
-    try {
-      await upsertUserCertification(userId, certRecord.id, 'interested');
-      await loadCerts();
-    } catch {
-      // silently fail
-    }
-  };
+
 
   const getUserCertStatus = useCallback((certName: string): UserCertification['status'] | null => {
     const certRecord = findCertByName(allCerts, certName);
@@ -638,37 +630,51 @@ export default function CareerMapPage() {
     ? (modalStageKey === 'ACADEMIA' ? ACADEMIA_CELL : selectedTrack?.cells[modalStageKey] ?? null)
     : null;
 
+  const handleSetCertStatus = async (certName: string, newStatus: string) => {
+    if (!user) return;
+    const certRecord = findCertByName(allCerts, certName);
+    if (!certRecord) return;
+    const currentStatus = getUserCertStatus(certName);
+    if (currentStatus === newStatus) {
+      // Toggle off
+      await removeUserCertification(user.id, certRecord.id);
+    } else {
+      await upsertUserCertification(user.id, certRecord.id, newStatus);
+    }
+    await loadCerts();
+  };
+
   const renderCertStatus = (certName: string, compact?: boolean) => {
     const status = getUserCertStatus(certName);
-    const fontSize = compact ? 10 : 12;
-    if (status === 'acquired') {
-      return (
-        <span style={{ ...s.certStatusBadge, background: '#e2e8f0', color: '#94a3b8', fontSize }}>
-          取得済み
-        </span>
-      );
-    }
-    if (status === 'studying') {
-      return (
-        <span style={{ ...s.certStatusBadge, background: '#dbeafe', color: '#2563eb', fontSize }}>
-          学習中
-        </span>
-      );
-    }
-    if (status === 'interested') {
-      return (
-        <span style={{ ...s.certStatusBadge, background: '#fce7f3', color: MAGENTA, fontSize }}>
-          気になる
-        </span>
-      );
-    }
+    const sz = compact ? 9 : 11;
+    const pad = compact ? '2px 6px' : '4px 8px';
+    const buttons = [
+      { label: '気になる', value: 'interested', color: MAGENTA },
+      { label: '目指す', value: 'studying', color: CYAN },
+      { label: '取得済み', value: 'acquired', color: SEA_GREEN },
+    ];
     return (
-      <button
-        onClick={(e) => { e.stopPropagation(); handleAddCert(certName); }}
-        style={{ ...s.addCertBtn, fontSize }}
-      >
-        + お気に入りに追加
-      </button>
+      <div style={{ display: 'flex', gap: 3 }} onClick={e => e.stopPropagation()}>
+        {buttons.map(btn => {
+          const isActive = status === btn.value;
+          return (
+            <button
+              key={btn.value}
+              onClick={(e) => { e.stopPropagation(); handleSetCertStatus(certName, btn.value); }}
+              style={{
+                fontSize: sz, fontWeight: 700, padding: pad, borderRadius: 6, cursor: 'pointer',
+                background: isActive ? btn.color : '#fff',
+                color: isActive ? '#fff' : btn.color,
+                border: `1.5px solid ${btn.color}`,
+                whiteSpace: 'nowrap',
+                lineHeight: 1.2,
+              }}
+            >
+              {btn.label}
+            </button>
+          );
+        })}
+      </div>
     );
   };
 
@@ -1020,26 +1026,7 @@ export default function CareerMapPage() {
             </p>
 
             <div style={{ marginTop: 16 }}>
-              {certDetailStatus === 'acquired' ? (
-                <span style={{ ...s.certStatusBadge, background: '#e2e8f0', color: '#94a3b8', fontSize: 14, padding: '6px 16px' }}>
-                  取得済み
-                </span>
-              ) : certDetailStatus === 'studying' ? (
-                <span style={{ ...s.certStatusBadge, background: '#dbeafe', color: '#2563eb', fontSize: 14, padding: '6px 16px' }}>
-                  学習中
-                </span>
-              ) : certDetailStatus === 'interested' ? (
-                <span style={{ ...s.certStatusBadge, background: '#fce7f3', color: MAGENTA, fontSize: 14, padding: '6px 16px' }}>
-                  気になる登録済み
-                </span>
-              ) : (
-                <button
-                  onClick={() => handleAddCert(certDetailName)}
-                  style={s.certDetailFavBtn}
-                >
-                  気になる
-                </button>
-              )}
+              {renderCertStatus(certDetailName)}
             </div>
           </div>
         </div>
@@ -1353,16 +1340,6 @@ const s: Record<string, CSSProperties> = {
     fontWeight: 600,
     padding: '3px 10px',
     borderRadius: 12,
-  },
-  addCertBtn: {
-    fontSize: 12,
-    fontWeight: 600,
-    padding: '4px 12px',
-    borderRadius: 12,
-    border: `1.5px solid ${MAGENTA}`,
-    background: '#fff',
-    color: MAGENTA,
-    cursor: 'pointer',
   },
 
   // Modal
