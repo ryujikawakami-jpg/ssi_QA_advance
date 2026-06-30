@@ -259,7 +259,7 @@ export default function MyPage() {
                 textDecoration: 'underline',
               }}
             >
-              キャリアマップを見る
+              キャリアパスを見る
             </span>
           </div>
         )}
@@ -280,10 +280,11 @@ export default function MyPage() {
                   padding: '14px 16px', borderRadius: 12, background: '#f8fafc',
                   border: '1px solid #eee', cursor: 'pointer',
                   display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                  width: '100%',
                   transition: 'background 0.15s',
                 }}
               >
-                <div>
+                <div style={{ minWidth: 0 }}>
                   <div style={{ fontSize: 15, fontWeight: 700, color: DEEP_BLUE }}>{cr.course.name}</div>
                   {cr.reachedLevel && (
                     <span style={{
@@ -296,7 +297,7 @@ export default function MyPage() {
                   )}
                 </div>
                 <div style={{
-                  fontSize: 20, fontWeight: 800,
+                  fontSize: 20, fontWeight: 800, flexShrink: 0,
                   color: cr.rate >= 80 ? SEA_GREEN : cr.rate >= 50 ? CYAN : '#aaa',
                 }}>
                   {cr.rate}%

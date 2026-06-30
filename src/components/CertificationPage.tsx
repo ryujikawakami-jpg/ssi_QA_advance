@@ -68,14 +68,15 @@ export default function CertificationPage() {
     return userCerts.find(uc => uc.certification_id === certId)?.status;
   };
 
-  const handleToggleInterested = async (certId: number) => {
+  const handleSetStatus = async (certId: number, status: string) => {
     if (!user) return;
-    const current = getUserCertStatus(certId);
-    if (!current) {
-      await upsertUserCertification(user.id, certId, 'interested');
-    } else if (current === 'interested') {
-      await removeUserCertification(user.id, certId);
-    }
+    await upsertUserCertification(user.id, certId, status);
+    await loadData();
+  };
+
+  const handleRemoveStatus = async (certId: number) => {
+    if (!user) return;
+    await removeUserCertification(user.id, certId);
     await loadData();
   };
 
@@ -243,71 +244,73 @@ export default function CertificationPage() {
               }}>
                 {modalCert.category}
               </span>
+              {modalCert.reward ? (
+                <span style={{
+                  fontSize: 12, fontWeight: 700, color: '#16a34a',
+                  background: '#ecfdf5', padding: '3px 10px', borderRadius: 999,
+                  border: '1px solid #bbf7d0',
+                }}>
+                  {modalCert.reward}
+                </span>
+              ) : (
+                <span style={{
+                  fontSize: 12, fontWeight: 700, color: '#9ca3af',
+                  background: '#f3f4f6', padding: '3px 10px', borderRadius: 999,
+                  border: '1px solid #e5e7eb',
+                }}>
+                  資格手当対象外
+                </span>
+              )}
             </div>
 
-            <p style={{ fontSize: 14, color: '#555', lineHeight: 1.7, marginBottom: 16 }}>
-              {modalCert.description || '説明はまだありません'}
+            <p style={{ fontSize: 14, color: modalCert.description ? '#555' : '#aaa', lineHeight: 1.7, marginBottom: 16, fontStyle: modalCert.description ? 'normal' : 'italic' }}>
+              {modalCert.description || '説明はまだ登録されていません'}
             </p>
 
-            {modalCert.reward && (
-              <div style={{
-                fontSize: 13, color: levelColors[modalCert.level] ?? '#666',
-                fontWeight: 700, marginBottom: 20,
-                padding: '8px 12px', borderRadius: 8,
-                background: `${levelColors[modalCert.level] ?? '#666'}10`,
-              }}>
-                {modalCert.reward}
-              </div>
-            )}
-
-            {/* Status / action buttons */}
+            {/* Status selection buttons */}
             {(() => {
-              const status = getUserCertStatus(modalCert.id);
-              if (status === 'acquired') {
-                return (
-                  <div style={{
-                    padding: '10px 16px', borderRadius: 8, background: '#ecfdf5',
-                    color: SEA_GREEN, fontWeight: 700, fontSize: 14, textAlign: 'center',
-                  }}>
-                    取得済み
-                  </div>
-                );
-              }
-              if (status === 'studying') {
-                return (
-                  <div style={{
-                    padding: '10px 16px', borderRadius: 8, background: '#eff6ff',
-                    color: CYAN, fontWeight: 700, fontSize: 14, textAlign: 'center',
-                  }}>
-                    習得を目指しています
-                  </div>
-                );
-              }
-              if (status === 'interested') {
-                return (
-                  <button
-                    onClick={() => handleToggleInterested(modalCert.id)}
-                    style={{
-                      width: '100%', padding: '10px 16px', borderRadius: 8,
-                      background: '#fff', border: `1px solid #ddd`, color: '#888',
-                      fontSize: 14, fontWeight: 600, cursor: 'pointer',
-                    }}
-                  >
-                    気になるを解除
-                  </button>
-                );
-              }
+              const currentStatus = getUserCertStatus(modalCert.id);
+              const buttons: { label: string; status: string; color: string }[] = [
+                { label: '気になる', status: 'interested', color: MAGENTA },
+                { label: '取得を目指す', status: 'studying', color: CYAN },
+                { label: '取得済み', status: 'acquired', color: SEA_GREEN },
+              ];
               return (
-                <button
-                  onClick={() => handleToggleInterested(modalCert.id)}
-                  style={{
-                    width: '100%', padding: '10px 16px', borderRadius: 8,
-                    background: MAGENTA, border: 'none', color: '#fff',
-                    fontSize: 14, fontWeight: 700, cursor: 'pointer',
-                  }}
-                >
-                  気になる
-                </button>
+                <div>
+                  <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+                    {buttons.map(btn => {
+                      const isActive = currentStatus === btn.status;
+                      return (
+                        <button
+                          key={btn.status}
+                          onClick={() => handleSetStatus(modalCert.id, btn.status)}
+                          style={{
+                            flex: 1, padding: '10px 8px', borderRadius: 8,
+                            fontSize: 13, fontWeight: 700, cursor: 'pointer',
+                            background: isActive ? btn.color : '#fff',
+                            color: isActive ? '#fff' : btn.color,
+                            border: `2px solid ${btn.color}`,
+                            transition: 'all 0.15s',
+                          }}
+                        >
+                          {btn.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {currentStatus && (
+                    <button
+                      onClick={() => handleRemoveStatus(modalCert.id)}
+                      style={{
+                        background: 'none', border: 'none', color: '#aaa',
+                        fontSize: 12, cursor: 'pointer', padding: '4px 0',
+                        textDecoration: 'underline',
+                      }}
+                    >
+                      解除
+                    </button>
+                  )}
+                </div>
               );
             })()}
 

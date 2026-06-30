@@ -31,7 +31,7 @@ export default function Header() {
       <Link to="/mypage" style={styles.navLink}>マイページ</Link>
       <Link to="/" style={styles.navLink}>スキルマップ</Link>
       <Link to="/certifications" style={styles.navLink}>資格表</Link>
-      <Link to="/career" style={styles.navLink}>キャリアマップ</Link>
+      <Link to="/career" style={styles.navLink}>キャリアパス</Link>
       {(user.role === 'leader' || user.role === 'board') && (
         <Link to="/team" style={styles.navLink}>チーム</Link>
       )}

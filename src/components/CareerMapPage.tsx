@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import type { CSSProperties } from 'react';
 import { useAuth } from '../context/AuthContext';
 import {
@@ -585,9 +585,14 @@ export default function CareerMapPage() {
     setSelectedTrackIdx(null);
   };
 
+  const routeRef = useRef<HTMLDivElement>(null);
+
   const handleSubTrackClick = (groupId: string, trackIdx: number) => {
     setSelectedGroupId(groupId);
     setSelectedTrackIdx(trackIdx);
+    setTimeout(() => {
+      routeRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 100);
   };
 
   const handleScope = () => {
@@ -812,7 +817,7 @@ export default function CareerMapPage() {
 
       {/* ── Section 2: Route Display ── */}
       {selectedTrack && selectedGroup && (
-        <div style={s.section2}>
+        <div ref={routeRef} style={s.section2}>
           <h2 style={s.routeTitle}>
             {selectedGroup.name} / {selectedTrack.name} のキャリアルート
           </h2>
@@ -855,6 +860,7 @@ export default function CareerMapPage() {
                       flex: isMobile ? undefined : '1 1 0',
                       minWidth: 0,
                       width: isMobile ? '100%' : undefined,
+                      maxWidth: isMobile ? 'none' : undefined,
                       padding: 16,
                       borderRadius: 12,
                     }}
@@ -1203,6 +1209,7 @@ const s: Record<string, CSSProperties> = {
     alignItems: 'stretch',
     gap: 0,
     marginBottom: 20,
+    overflowX: 'hidden' as const,
   },
   routeCard: {
     background: '#fff',
