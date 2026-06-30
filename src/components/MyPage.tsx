@@ -280,8 +280,8 @@ export default function MyPage() {
                   padding: '14px 16px', borderRadius: 12, background: '#f8fafc',
                   border: '1px solid #eee', cursor: 'pointer',
                   display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                  width: '100%',
-                  transition: 'background 0.15s',
+                  width: '100%', boxSizing: 'border-box',
+                  transition: 'background 0.15s', overflow: 'hidden',
                 }}
               >
                 <div style={{ minWidth: 0 }}>
@@ -510,6 +510,8 @@ const sectionStyle: React.CSSProperties = {
   marginBottom: 20,
   boxShadow: '0 1px 8px rgba(0,0,0,0.04)',
   border: '1px solid #eee',
+  overflow: 'hidden',
+  boxSizing: 'border-box',
 };
 
 const sectionTitleStyle: React.CSSProperties = {

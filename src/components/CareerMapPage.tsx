@@ -1321,11 +1321,15 @@ const s: Record<string, CSSProperties> = {
     background: '#f8fafc',
     borderRadius: 10,
     border: '1px solid #f1f5f9',
+    gap: 8,
   },
   certListLeft: {
     display: 'flex',
     flexDirection: 'column' as const,
     gap: 2,
+    flex: 1,
+    minWidth: 0,
+    textAlign: 'left' as const,
   },
   certName: {
     fontSize: 14,
