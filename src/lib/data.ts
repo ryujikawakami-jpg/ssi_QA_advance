@@ -354,7 +354,7 @@ export async function sendInviteEmail(
   email: string,
   role: string,
   teamName: string,
-  appUrl = 'https://app-two-gamma-56.vercel.app',
+  appUrl = 'https://ssi-qa-advance-239789192031.asia-northeast1.run.app',
 ): Promise<{ success: boolean }> {
   const roleLabelMap: Record<string, string> = { member: 'メンバー', leader: 'リーダー', board: '管理者' };
   try {
