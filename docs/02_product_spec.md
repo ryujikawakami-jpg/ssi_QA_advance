@@ -6,7 +6,7 @@
 | バージョン | v3.0 |
 | 関連文書 | スキルチェックアプリ 要件定義書 v3.0 / 決定事項ログ 03_decisions.md |
 | 想定実装 | React + TypeScript / Supabase / GCP Cloud Run |
-| 更新日 | 2026-06-30 |
+| 更新日 | 2026-07-01 |
 
 本書は要件定義書を実装可能な粒度に落とし込んだもので、Claude Code等での実装着手を想定している。
 
@@ -391,8 +391,8 @@ recommend = sorted.slice(0, 5)  // 上位5件
 9. リーダー：チーム一覧・メンバーダッシュボード参照・履歴削除
 10. ボード：全社一覧・レベル別サマリー
 11. 管理画面：マスタ管理・ユーザー管理・チーム管理
-12. GCP Cloud Runデプロイ（`gcloud run deploy skillcheck --source . --region asia-northeast1`）、社内URL共有
-    - Service URL: https://skillcheck-239789192031.asia-northeast1.run.app
+12. GCP Cloud Runデプロイ: git push → Cloud Build自動ビルド → Cloud Runデプロイ（手動コマンド不要）
+    - Service URL: https://ssi-qa-advance-239789192031.asia-northeast1.run.app
 13. （後期）Slack連携：Bot作成、通知機能実装
 
 ---

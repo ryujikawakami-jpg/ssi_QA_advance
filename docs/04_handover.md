@@ -1,6 +1,6 @@
 # 開発引き継ぎドキュメント — Widsley スキルチェックアプリ
 
-最終更新: 2026-06-30
+最終更新: 2026-07-01
 
 ---
 
@@ -9,8 +9,8 @@
 SSI事業部のスキル自己評価をExcelからWebアプリ化するプロジェクト。
 4コース（Academia/テスト自動化/マネジメント/セキュリティ）127スキル対応。
 
-**本番URL:** https://skillcheck-239789192031.asia-northeast1.run.app
-**GitHub:** ryujikawakami-jpg/ssi_QA_advance
+**本番URL:** https://ssi-qa-advance-239789192031.asia-northeast1.run.app
+**GitHub:** Widsley-Biz/ssi_QA_advance
 **Supabase:** https://azjrbizzkjvemeheoohg.supabase.co
 
 ---
@@ -163,11 +163,9 @@ npm run dev
 ```
 
 ### デプロイ（GCP Cloud Run）
-```bash
-cd qa_advance/app
-gcloud run deploy skillcheck --source . --region asia-northeast1
-# Service URL: https://skillcheck-239789192031.asia-northeast1.run.app
-```
+git pushするだけで自動デプロイ。手動コマンド不要。
+- GitHub push → Cloud Build自動ビルド → Cloud Runデプロイ
+- Service URL: https://ssi-qa-advance-239789192031.asia-northeast1.run.app
 
 **注意:** `.env.production`にSupabaseの`VITE_SUPABASE_URL`と`VITE_SUPABASE_ANON_KEY`が設定されている必要がある。
 
