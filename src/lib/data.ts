@@ -348,7 +348,7 @@ export async function deleteInvitation(id: number): Promise<void> {
   }
 }
 
-const GAS_INVITE_URL = 'https://script.google.com/a/macros/widsley.com/s/AKfycbxr8eX3QoEK2z3HLsvYkXTnTDY8ViWTf3fUl9TqhhTS9N5FrybIabZMrWOncPr9BEFY/exec';
+const GAS_INVITE_URL = 'https://script.google.com/a/macros/widsley.com/s/AKfycbzm_K0PS3tCbnCl9TUPWWUuhsoaAyJwP18rWwBfmKFT2QY_nwFanfptmAW-wiCMSAzD/exec';
 
 export async function sendInviteEmail(
   email: string,
